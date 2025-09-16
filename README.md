@@ -1,36 +1,115 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## ServiceM8 Customer Portal
+
+A secure, self-service customer portal for ServiceM8 users to view job status, approve quotes, download documents, and track payments. Built with Next.js (App Router) and Supabase, integrated with the ServiceM8 API and real-time webhooks.
+
+### Why it’s useful
+- **Reduce back-and-forth**: Customers can self-serve job info, invoices, and approvals.
+- **Faster approvals**: Digital quote approval with signature speeds up job kickoff.
+- **Single source of truth**: Data syncs from ServiceM8 and is cached for performance.
+- **Secure access**: Customer-specific isolation and audit logging.
+
+### Who uses it
+- **Customers**: View their jobs, download invoices/quotes, approve quotes, check payment status.
+- **Internal staff (optional)**: Monitor customer activity and sync status via Supabase.
+
+---
+
+## Core User Flows
+
+### 1) Customer dashboard
+- Navigate to `/dashboard`.
+- See total/active jobs, recent activity, upcoming schedule, pending approvals, and total value.
+- Data is served via `GET /api/customer-portal/dashboard` backed by cached ServiceM8 sync.
+
+### 2) Browse and filter jobs
+- Navigate to `/jobs`.
+- View list of jobs with status and key details.
+- Filter by status/date; data from `GET /api/customer-portal/jobs`.
+
+### 3) Document center (quotes, invoices, photos)
+- From a job, open documents.
+- Preview PDFs/images in the built-in viewer.
+- Download via `GET /api/servicem8/attachments/[attachmentId]`.
+
+### 4) Quote approval
+- Open a quote and submit approval with signature and notes.
+- Calls `POST /api/servicem8/jobs/[jobId]/approve`.
+- Job status is updated and cached data is refreshed.
+
+### 5) Payment tracking
+- Navigate to `/payments`.
+- View payment history, outstanding invoices, and statuses.
+- Data from `GET /api/customer-portal/payments`.
+
+---
+
+## Features
+- ServiceM8 API integration with rate limiting and retries.
+- Real-time sync via webhooks (`/api/webhooks/servicem8`).
+- Caching layer in Supabase for performance and quota management.
+- Document management with previews and secure downloads.
+- Quote approval workflow with digital signature.
+- Access control and audit logging foundations.
+
+---
+
+## Architecture
+- Next.js 15 App Router with API routes under `app/api/*`.
+- Supabase Postgres for cached data and audit logs.
+- ServiceM8 client for upstream data (jobs, attachments, materials, activities).
+- Webhooks keep cache fresh on job, attachment, and material updates.
+
+---
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+- Node 18+
+- ServiceM8 API key
+- Supabase project (anon key + URL)
 
+### Environment variables
+- `SERVICEM8_API_KEY`
+- `SERVICEM8_WEBHOOK_SECRET` (optional, recommended in production)
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+### Install & run
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# build: npm run build
+# start: npm run start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## API Surface (Selected)
+- `GET /api/customer-portal/dashboard` – Dashboard metrics for a customer/company UUID.
+- `GET /api/customer-portal/jobs` – Jobs list with optional filters.
+- `GET /api/customer-portal/payments` – Derived payment history from jobs.
+- `GET /api/servicem8/attachments/[attachmentId]` – Secure attachment download proxy.
+- `POST /api/servicem8/jobs/[jobId]/approve` – Quote approval with signature.
+- `POST /api/webhooks/servicem8` – Webhook receiver to trigger cache sync.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## Security & Compliance
+- Session-based access with NextAuth (App Router).
+- Customer data isolation enforced in queries.
+- Audit logging and rate limiting foundations.
+- Recommended: enable RLS policies and encryption for sensitive fields.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Limitations & Next Steps
+- Add email/password or magic-link providers for authentication.
+- Complete RLS policies and data encryption.
+- Add tests (unit/integration/E2E) and deployment docs.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Contributing
+Issues and PRs are welcome. Please avoid committing secrets and ensure changes pass linting and type checks.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

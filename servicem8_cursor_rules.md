@@ -62,6 +62,12 @@ A secure customer portal for ServiceM8 users to view job status, download docume
    - Implement proper file type validation for invoices/quotes
    - Store file metadata in Supabase, actual files in Uploadthing
 
+6. **Build & Lint Fixes (2025-09-16)**:
+   - For NextAuth v4 in App Router, export handlers with `export const { GET, POST } = NextAuth(authOptions)` and use `getServerSession(authOptions)` for `auth()` in server code
+   - Replace `<img>` with `next/image` for optimized LCP and bandwidth
+   - Remove unused imports and explicitly void unused parameters to satisfy ESLint without disabling rules
+   - Ensure API route files export valid `GET/POST` to avoid Turbopack “handlers undefined” build error
+
 ## Project Status Summary
 
 **Overall Progress: ~85% Complete**
@@ -206,7 +212,7 @@ A secure customer portal for ServiceM8 users to view job status, download docume
   - [ ] Touch-friendly interfaces
 - [x] Component Library:
   - [x] Basic job status cards
-  - [ ] Document viewer components
+  - [x] Document viewer components
   - [ ] Approval forms
   - [ ] Payment status indicators
 - [x] User Experience:
