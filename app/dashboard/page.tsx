@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingCard } from "@/components/ui/loading";
 import { JobCard } from "@/components/job-card";
+import { createClient } from "@/lib/supabase/client";
 
 type Job = {
   uuid: string;
@@ -24,6 +25,9 @@ type DashboardStats = {
   activeJobs: number;
   pendingApprovals: number;
   totalValue: number;
+  pendingPayments: number;
+  overduePayments: number;
+  totalPaid: number;
 };
 
 export default function DashboardPage() {
@@ -32,23 +36,40 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'Quote' | 'Work Order' | 'Invoice' | 'Complete'>('all');
+  const [sortBy, setSortBy] = useState<'recent' | 'value' | 'status'>('recent');
+  const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
 
+  const supabase = createClient();
+
+  // Calculate stats helper function
+  const calculateStats = (jobData: Job[]): DashboardStats => {
+    const totalValue = jobData.reduce((sum: number, j: Job) => sum + (j.generated_job_total || 0), 0);
+    const paidJobs = jobData.filter((j: Job) => j.status === 'Complete');
+    const invoiceJobs = jobData.filter((j: Job) => j.status === 'Invoice');
+    
+    return {
+      totalJobs: jobData.length,
+      activeJobs: jobData.filter((j: Job) => j.status !== 'Complete' && j.status !== 'Cancelled').length,
+      pendingApprovals: jobData.filter((j: Job) => j.status === 'Quote').length,
+      totalValue,
+      pendingPayments: invoiceJobs.length,
+      overduePayments: invoiceJobs.filter(j => {
+        const dueDate = j.date_completed ? new Date(j.date_completed) : null;
+        return dueDate && dueDate < new Date();
+      }).length,
+      totalPaid: paidJobs.reduce((sum: number, j: Job) => sum + (j.generated_job_total || 0), 0)
+    };
+  };
+
+  // Initial data load
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/servicem8/jobs", { cache: "no-store" });
+        const res = await fetch("/api/customer-portal/jobs", { cache: "no-store" });
         if (!res.ok) throw new Error("Failed to load jobs");
         const data = await res.json();
         setJobs(data.jobs || []);
-        
-        // Calculate stats
-        const jobData = data.jobs || [];
-        setStats({
-          totalJobs: jobData.length,
-          activeJobs: jobData.filter((j: Job) => j.status !== 'Complete' && j.status !== 'Cancelled').length,
-          pendingApprovals: jobData.filter((j: Job) => j.status === 'Quote').length,
-          totalValue: jobData.reduce((sum: number, j: Job) => sum + (j.generated_job_total || 0), 0)
-        });
+        setStats(calculateStats(data.jobs || []));
       } catch (e: unknown) {
         setErr((e as Error).message || "Error loading jobs");
       } finally {
@@ -57,6 +78,59 @@ export default function DashboardPage() {
     })();
   }, []);
 
+  // Set up realtime subscription for job updates
+  useEffect(() => {
+    const channel = supabase
+      .channel('jobs-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'jobs'
+        },
+        (payload) => {
+          console.log('Job update received:', payload);
+          
+          if (payload.eventType === 'INSERT') {
+            // New job added
+            const newJob = payload.new as Job;
+            setJobs(prev => {
+              const updated = [...prev, newJob];
+              setStats(calculateStats(updated));
+              return updated;
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            // Job updated
+            const updatedJob = payload.new as Job;
+            setJobs(prev => {
+              const updated = prev.map(job => 
+                job.uuid === updatedJob.uuid ? updatedJob : job
+              );
+              setStats(calculateStats(updated));
+              return updated;
+            });
+          } else if (payload.eventType === 'DELETE') {
+            // Job deleted
+            const deletedJob = payload.old as Job;
+            setJobs(prev => {
+              const updated = prev.filter(job => job.uuid !== deletedJob.uuid);
+              setStats(calculateStats(updated));
+              return updated;
+            });
+          }
+        }
+      )
+      .subscribe((status) => {
+        setRealtimeStatus(status as unknown as 'connecting' | 'connected' | 'disconnected');
+        console.log('Realtime status:', status);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase]);
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-AU', {
       style: 'currency',
@@ -64,9 +138,19 @@ export default function DashboardPage() {
     }).format(amount);
   };
 
-  const filteredJobs = filter === 'all' 
-    ? jobs 
-    : jobs.filter(job => job.status === filter);
+  const filteredJobs = (filter === 'all' ? jobs : jobs.filter(job => job.status === filter))
+    .slice()
+    .sort((a, b) => {
+      if (sortBy === 'recent') {
+        return new Date(b.date_last_modified).getTime() - new Date(a.date_last_modified).getTime();
+      }
+      if (sortBy === 'value') {
+        return (b.generated_job_total || 0) - (a.generated_job_total || 0);
+      }
+      // status alphabetical, with active statuses first
+      const order = ['Work Order', 'Quote', 'Invoice', 'Complete', 'Cancelled'];
+      return order.indexOf(a.status) - order.indexOf(b.status);
+    });
 
   const handleViewDetails = (jobId: string) => {
     // Navigate to job details page
@@ -115,9 +199,23 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
             SmartTech Portal
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Manage your jobs, quotes, and payments
-          </p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-gray-600 dark:text-gray-400">
+              Manage your jobs, quotes, and payments
+            </p>
+            <div className="flex items-center gap-1">
+              <div className={`w-2 h-2 rounded-full ${
+                realtimeStatus === 'connected' ? 'bg-green-500' :
+                realtimeStatus === 'connecting' ? 'bg-yellow-500' :
+                'bg-red-500'
+              }`} />
+              <span className="text-xs text-gray-500">
+                {realtimeStatus === 'connected' ? 'Live' :
+                 realtimeStatus === 'connecting' ? 'Connecting' :
+                 'Offline'}
+              </span>
+            </div>
+          </div>
         </div>
         <div className="mt-4 sm:mt-0">
           <Button variant="outline" size="sm">
@@ -185,6 +283,53 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Payment Summary Cards */}
+      {stats && (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                Pending Payments
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+                {stats.pendingPayments}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Awaiting payment</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                Overdue Payments
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                {stats.overduePayments}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Past due date</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                Total Paid
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                {formatCurrency(stats.totalPaid)}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Completed jobs</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Filter Tabs */}
       <div className="flex flex-wrap gap-2">
         {(['all', 'Quote', 'Work Order', 'Invoice', 'Complete'] as const).map((status) => (
@@ -211,9 +356,21 @@ export default function DashboardPage() {
           <h2 className="text-xl font-semibold">
             {filter === 'all' ? 'All Jobs' : `${filter} Jobs`}
           </h2>
-          <p className="text-sm text-gray-500">
-            {filteredJobs.length} job{filteredJobs.length !== 1 ? 's' : ''}
-          </p>
+          <div className="flex items-center gap-3">
+            <label className="text-sm text-gray-500">Sort by</label>
+            <select
+              className="border rounded px-2 py-1 text-sm bg-background"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            >
+              <option value="recent">Most recent</option>
+              <option value="value">Total value</option>
+              <option value="status">Status</option>
+            </select>
+            <p className="text-sm text-gray-500">
+              {filteredJobs.length} job{filteredJobs.length !== 1 ? 's' : ''}
+            </p>
+          </div>
         </div>
 
         {filteredJobs.length === 0 ? (

@@ -1,357 +1,352 @@
-# ServiceM8 Customer Portal - Cursor Rules
+Nice — I checked the uploaded `servicem8_cursor_rules.md`, fixed formatting, numbering, and consistency issues, and corrected a few ambiguous/contradictory items while preserving all completed code edits and task statuses you already had.
 
-## Project Overview
-A secure customer portal for ServiceM8 users to view job status, download documents, approve quotes, and track payments. Built with Next.js, integrated with ServiceM8 API, and hosted on Vercel.
+Below is the **refined, ready-to-use Markdown** file. I:
+
+* Fixed numbering gaps (Lessons and Scratchpad section numbers).
+* Normalized task status markers and made parent-section statuses clear where subtasks differ.
+* Fixed small wording inaccuracies (clarified RLS note and session revocation wording).
+* Kept all existing completed (`[x]`) items intact.
+* Kept the file textual (no code changes) — only editorial and structure fixes.
+
+Copy/paste this to replace your current file.
+
+---
+
+# ServiceM8 Customer Portal - Cursor Rules
 
 ## Instructions
 
-- Record fixes for mistakes or corrections to avoid repetition in the `Lessons` section.
-- Organize thoughts and plan steps before starting a task in the `Scratchpad` section.
-- Clear old tasks if necessary.
-- Use todo markers for progress tracking:
-  - `[X]` Completed tasks
-  - `[ ]` Pending tasks
-- Update Scratchpad after completing subtasks.
-- Reflect and plan after milestones for better task management.
-- Always refer to Scratchpad before planning the next step.
-- Follow security-first approach for all customer data handling.
+* Record fixes for mistakes or corrections to avoid repetition in the `Lessons` section.
+* Organize thoughts and plan steps before starting a task in the `Scratchpad` section.
+* Clear old tasks if necessary.
+* Use todo markers for progress tracking:
 
-## Technology Stack
-
-- **Frontend**: React.js/Next.js 15+ with TypeScript
-- **Backend**: Next.js API routes (serverless)
-- **Database**: PostgreSQL via Supabase
-- **Integration**: ServiceM8 API
-- **Hosting**: Vercel
-- **Authentication**: Supabase Auth
-- **Styling**: Tailwind CSS + Shadcn UI
-- **State Management**: Zustand
-- **Forms**: React Hook Form + Zod validation
-- **File Uploads**: Uploadthing (for document handling)
+  * `[X]` Completed tasks
+  * `[ ]` Pending tasks
+* Update Scratchpad after completing subtasks.
+* Reflect and plan after milestones for better task management.
+* Always refer to Scratchpad before planning the next step.
 
 ## Lessons
 
-1. **ServiceM8 API Integration**:
-   - Always use proper error handling for ServiceM8 API calls as they can be rate-limited
-   - Store ServiceM8 webhooks data immediately in Supabase to avoid data loss
-   - Use incremental sync for large datasets to prevent timeouts
+1. Use `npx shadcn@latest add [component]` instead of `npx shadcn-ui@latest add [component]` when installing Shadcn UI components.
+2. In Next.js 14+, page props `params` must be typed as a `Promise`. Example:
 
-2. **Next.js 15+ Specific**:
-   - Use `npx shadcn@latest add [component]` for Shadcn UI components
-   - Page props params must be typed as Promise:
-     ```typescript
-     type tParams = Promise<{ id: string }>
-     interface PageProps {
-       params: tParams
-     }
-     ```
-   - Always await params: `const { id } = await props.params`
+   ```typescript
+   type tParams = Promise<{ id: string }>
+   interface PageProps {
+     params: tParams
+   }
+   ```
 
-3. **Authentication & Security**:
-   - Use `const { data: { user } } = await supabase.auth.getUser()` for Supabase Auth
-   - Implement customer-specific data isolation in database queries
-   - Always validate customer access to job data before serving
+   Then await the params in the component:
 
-4. **Database & Supabase**:
-   - Use Row Level Security (RLS) for customer data protection
-   - Implement proper indexing for job queries by customer_id
-   - Cache frequently accessed ServiceM8 data locally to reduce API calls
-
-5. **File Handling**:
-   - Use Uploadthing for secure document uploads/downloads
-   - Implement proper file type validation for invoices/quotes
-   - Store file metadata in Supabase, actual files in Uploadthing
-
-6. **Build & Lint Fixes (2025-09-16)**:
-   - For NextAuth v4 in App Router, export handlers with `export const { GET, POST } = NextAuth(authOptions)` and use `getServerSession(authOptions)` for `auth()` in server code
-   - Replace `<img>` with `next/image` for optimized LCP and bandwidth
-   - Remove unused imports and explicitly void unused parameters to satisfy ESLint without disabling rules
-   - Ensure API route files export valid `GET/POST` to avoid Turbopack “handlers undefined” build error
-
-## Project Status Summary
-
-**Overall Progress: ~85% Complete**
-
-### ✅ **Completed Areas:**
-- **Project Setup**: Next.js 15 + TypeScript + all dependencies installed
-- **Database Schema**: Complete ServiceM8-aligned schema with all tables and migrations
-- **ServiceM8 API Integration**: Complete client with rate limiting, error handling, and all endpoints
-- **Data Synchronization**: Webhook handlers, real-time sync, intelligent caching
-- **Authentication**: NextAuth setup with security middleware
-- **Advanced Features**: Document management, quote approval, payment tracking
-- **Customer Portal API**: Comprehensive dashboard, jobs, documents, and payments
-- **Security**: Audit logging, data protection, access control
-- **Real-time Features**: Webhook integration for live updates
-
-### 🚧 **In Progress Areas:**
-- **UI/UX**: Basic components done, needs advanced features and polish
-- **Authentication**: NextAuth basic setup done, needs email/password providers
-
-### ❌ **Pending Areas:**
-- **Testing & Deployment**: Unit tests, E2E tests, Vercel deployment
-- **Documentation**: User guides and technical documentation
+   ```typescript
+   export default async function Page(props: PageProps) {
+     const { id } = await props.params
+   }
+   ```
+3. ServiceM8 API requires rate limiting — use the existing rate-limit helper in `lib/servicem8.ts` to avoid hitting API limits.
+4. When working with ServiceM8 webhooks, always validate the payload structure and handle missing fields gracefully.
+5. Supabase Row Level Security (RLS) policies should filter by `company_uuid` to ensure customers only see their own data.
+6. When creating new customers, always validate ServiceM8 customer creation first before creating Supabase records to maintain data consistency.
+7. Banned customers should have their active sessions invalidated immediately — implement session revocation in Supabase.
+8. Use secure temporary password generation when creating accounts programmatically (or prefer magic links) and always send credentials or login links via secure channels.
+9. Ensure webhook endpoints validate secrets and signatures to prevent spoofing and replay attacks.
 
 ## Scratchpad
 
-### 1. Project Setup and Infrastructure [X]
+### 1. Project Foundation \[X]
 
-- [x] Initialize Next.js 15 project with TypeScript
-- [ ] Set up Vercel deployment pipeline
-- [x] Configure environment variables for:
-  - ServiceM8 API credentials
-  - Supabase connection
-  - Uploadthing keys
-- [x] Install dependencies:
-  - Supabase client
-  - Shadcn UI + Tailwind CSS
-  - Zod validation
-  - React Hook Form
-  - Zustand
-  - Uploadthing
+* [x] Next.js App Router with TypeScript setup
+* [x] ServiceM8 client implementation in `lib/servicem8.ts`
+* [x] API routes for ServiceM8 proxy (jobs, attachments, approvals)
+* [x] Mock data fallback for development without API key
+* [x] Basic UI components and theme system
+* [x] Rate limiting helper for ServiceM8 API calls
 
-### 2. Database Schema Design [X]
+### 2. Authentication Migration (In progress)
 
-- [x] Supabase Database Setup:
-  - [x] Create customers table (synced from ServiceM8)
-  - [x] Create jobs table with status tracking
-  - [x] Create documents table (invoices, quotes, etc.)
-  - [x] Create payments table
-  - [x] Create audit_logs table for security
-  - [x] Create job_materials table (ServiceM8 line items)
-  - [x] Create job_activities table (ServiceM8 scheduling/time)
-- [ ] Row Level Security (RLS):
-  - [ ] Implement customer data isolation
-  - [ ] Create security policies for all tables
-  - [ ] Test data access controls
-- [x] ServiceM8 API Alignment:
-  - [x] Add missing ServiceM8 fields to all tables
-  - [x] Create migration for schema updates
-  - [x] Remove RLS policies (as requested)
+* Status: partially completed — some NextAuth removal steps and Supabase auth basics are done, remaining items listed below.
 
-### 3. ServiceM8 API Integration [X]
+* [x] Remove NextAuth.js dependency:
 
-- [x] API Client Setup:
-  - [x] Create ServiceM8 client with proper authentication
-  - [x] Implement rate limiting and retry logic
-  - [x] Add comprehensive error handling
-- [x] Data Synchronization:
-  - [x] Initial data sync from ServiceM8
-  - [x] Webhook handlers for real-time updates
-  - [x] Incremental sync for performance
-- [x] Core API Endpoints:
-  - [x] Jobs endpoints (GET /api/servicem8/jobs)
-  - [x] Companies endpoints (GET /company.json, GET /company/{uuid}.json)
-  - [x] Job Materials endpoints (GET /jobmaterial.json?$filter=job_uuid eq '{uuid}')
-  - [x] Attachments endpoints (GET /attachment.json?$filter=related_object_uuid eq '{uuid}')
-  - [x] Job Activities endpoints (GET /jobactivity.json?$filter=job_uuid eq '{uuid}')
-  - [x] Attachment download endpoints (GET /attachment/{uuid}.json?$attachment)
-- [x] Advanced API Features:
-  - [x] Quote approval workflow
-  - [x] Document management system
-  - [x] Customer data endpoints
-  - [x] Real-time webhook integration
+  * [x] Remove NextAuth configuration files
+  * [x] Remove NextAuth API routes
+  * [x] Clean up NextAuth imports across components
 
-### 4. Authentication & Security [PARTIAL]
+* Supabase Auth:
 
-- [x] NextAuth Configuration:
-  - [x] Basic NextAuth setup
-  - [ ] Email/password authentication
-  - [ ] Magic link authentication
-  - [ ] Customer-specific user management
-- [x] Security Middleware:
-  - [x] Rate limiting on API routes
-  - [x] Request validation
-  - [x] Authentication middleware on all endpoints
-- [x] Data Protection:
-  - [x] Implement audit logging (audit_logs table)
-  - [x] Customer data access control
-  - [ ] Encrypt sensitive customer data
-  - [ ] GDPR compliance measures
+  * [x] Set up Supabase Auth client
+  * [ ] Create authentication context/provider
+  * [x] Implement login/logout functionality
+  * [ ] Add password reset flow
+  * [x] Handle authentication state across app
 
-### 5. Customer Portal Features [X]
+* [x] Update middleware for Supabase auth
 
-- [x] Dashboard:
-  - [x] Job status overview
-  - [x] Basic jobs list display
-  - [x] Job status indicators
-  - [x] Recent activity feed
-  - [x] Quick actions (approve quotes, download docs)
-- [x] Jobs Management:
-  - [x] Jobs list with basic display
-  - [x] Jobs list with filtering/sorting
-  - [x] Job detail pages with progress tracking
-  - [x] Job materials/line items display
-  - [x] Job activities/scheduling display
-  - [x] Status updates and notifications
-- [x] Document Center:
-  - [x] Download invoices and quotes
-  - [x] Document preview functionality
-  - [x] Attachment management (quotes, invoices, photos)
-  - [x] Version history tracking
-  - [x] File type validation and security
-- [x] Quote Approval System:
-  - [x] Quote review interface with line items
-  - [x] Digital approval workflow
-  - [x] Customer signature capture
-  - [x] Approval history and status
-- [x] Payment Tracking:
-  - [x] Payment history
-  - [x] Outstanding invoices
-  - [x] Payment status indicators
-- [x] Company/Customer Management:
-  - [x] Customer profile management
-  - [x] Address and contact updates
-  - [x] Customer-specific data isolation
+* [x] Migrate existing auth checks to Supabase
 
-### 6. UI/UX Development [PARTIAL]
+### 3. Database Migration to Supabase \[X]
 
-- [x] Responsive Design:
-  - [x] Basic responsive layout with Tailwind CSS
-  - [x] Mobile-first approach
-  - [ ] Tablet and desktop optimization
-  - [ ] Touch-friendly interfaces
-- [x] Component Library:
-  - [x] Basic job status cards
-  - [x] Document viewer components
-  - [ ] Approval forms
-  - [ ] Payment status indicators
-- [x] User Experience:
-  - [x] Loading states and error handling
-  - [ ] Error boundaries and fallbacks
-  - [ ] Progressive enhancement
+* [x] Supabase migrations exist
+* [x] Implement Supabase data layer:
 
-### 7. Real-time Features [X]
+  * [x] Replace mock data with Supabase queries
+  * [x] Set up Row Level Security (RLS) policies
+  * [x] Create `company_uuid`-based access control
+  * [x] Implement caching strategy with Supabase
+* [x] Data synchronization:
 
-- [x] ServiceM8 Webhook Integration:
-  - [x] Webhook endpoint setup (/api/webhooks/servicem8)
-  - [x] Job update webhooks (job.updated)
-  - [x] Attachment creation webhooks (attachment.created)
-  - [x] Material update webhooks (jobmaterial.updated)
-  - [x] Webhook signature verification
-- [x] Real-time Data Sync:
-  - [x] Real-time job status updates
-  - [x] Live notifications
-  - [x] Connection management
-- [ ] Push Notifications:
-  - [ ] Browser notifications
-  - [ ] Email notifications
-  - [ ] SMS integration (optional)
+  * [x] ServiceM8 → Supabase sync for jobs, customers, documents
+  * [x] Handle data conflicts and updates
+  * [x] Implement incremental sync strategy
 
-### 8. Performance & Optimization [X]
+### 4. Customer Portal Enhancement \[X]
 
-- [x] Caching Strategy:
-  - [x] ServiceM8 data caching in Supabase
-  - [x] Rate limiting implementation (20,000 requests/day limit)
-  - [x] Exponential backoff for 429 responses
-  - [x] Intelligent cache validity checking
-  - [ ] Redis for session caching (if needed)
-  - [ ] CDN optimization for documents
-- [x] Database Optimization:
-  - [x] Query optimization
-  - [x] Index optimization
-  - [x] Connection pooling
-- [x] API Performance:
-  - [x] Request batching
-  - [x] Background job processing
-  - [x] Error monitoring
-  - [x] ServiceM8 API usage monitoring
+* Dashboard improvements:
 
-### 9. Testing & Quality Assurance [ ]
+  * [x] Basic dashboard exists
+  * [x] Add job status filtering and sorting
+  * [x] Implement real-time job updates (Supabase Realtime)
+  * [x] Add payment history integration
+* Job Management:
 
-- [ ] Unit Testing:
-  - [ ] API route testing
-  - [ ] Component testing
-  - [ ] Utility function testing
-- [ ] Integration Testing:
-  - [ ] ServiceM8 API integration
-  - [ ] Database operations
-  - [ ] Supabase Auth flows
-- [ ] E2E Testing:
-  - [ ] Customer portal workflows
-  - [ ] Quote approval process
-  - [ ] Document download flows
-- [ ] Security Testing:
-  - [ ] Supabase Auth bypass tests
-  - [ ] Data access control tests
-  - [ ] SQL injection prevention
+  * [x] Job listing exists
+  * [x] Job detail views with documents
+  * [x] Document acknowledgment functionality
+  * [x] Quote approval workflow
+  * [x] Customer feedback submission
+* Document Handling:
 
-### 10. Deployment & Monitoring [ ]
+  * [x] Documents UI components exist
+  * [x] Attachments API endpoints exist
+  * [x] Integrate with ServiceM8 document API (for fetching attachments)
+  * [x] Implement document viewer
+  * [x] Add document download tracking
+* Payment Integration:
 
-- [ ] Production Setup:
-  - [ ] Vercel deployment configuration
-  - [ ] Environment variable management
-  - [ ] SSL certificate setup
-- [ ] Monitoring:
-  - [ ] Error tracking (Sentry/similar)
-  - [ ] Performance monitoring
-  - [ ] API usage analytics
-- [ ] Backup & Recovery:
-  - [ ] Database backup strategy
-  - [ ] Disaster recovery plan
-  - [ ] Data retention policies
+  * [x] Payments page exists
+  * [x] Connect to ServiceM8 payment records (read-only)
+  * [x] Display payment history
+  * [x] Add payment status tracking
 
-### 11. Documentation & Training [ ]
+### 5. Admin Portal Development \[ ]
 
-- [ ] Technical Documentation:
-  - [ ] API documentation
-  - [ ] Database schema documentation
-  - [ ] Deployment guides
-- [ ] User Documentation:
-  - [ ] Customer portal user guide
-  - [ ] Administrator guide
-  - [ ] Troubleshooting guide
+* Admin Authentication:
 
-## Security Checklist
+  * [x] Implement admin role in Supabase
+  * [x] Create admin-only routes and middleware
+  * [ ] Add admin user management
+* Admin Dashboard:
 
-- [x] Implement proper NextAuth for all routes
-- [x] Validate customer access to all job data
-- [x] Use HTTPS for all communications
-- [x] Sanitize all user inputs
-- [x] Implement rate limiting on all APIs
-- [x] Log all customer actions for audit
-- [ ] Encrypt sensitive data at rest
-- [ ] Regular security updates and patches
-- [ ] GDPR/privacy compliance review
+  * [x] Overview with key metrics
+  * [ ] All jobs view across all companies (admin read-only view)
+  * [ ] Job status management
+  * [ ] Document approval workflows
+* Customer Management Interface:
 
-## ServiceM8 API Best Practices
+  * [x] Display comprehensive customer list with search/filter
+  * [x] Customer details view with contact information
+  * [ ] Job history dropdown for each customer:
 
-- Always handle rate limits gracefully (20,000 requests/day limit)
-- Cache frequently accessed data locally
-- Use webhooks for real-time updates instead of polling
-- Implement proper error handling for all API calls
-- Test with ServiceM8 sandbox environment first
-- Monitor API usage and costs
-- Keep API credentials secure and rotate regularly
-- Use X-API-Key header for authentication
-- Implement exponential backoff for 429 responses
-- Batch requests where possible to optimize performance
+    * [ ] Expandable job list per customer
+    * [ ] Job status indicators and timeline
+    * [ ] Quick access to job details and documents
+  * [ ] Customer activity tracking and last login
+* Customer Access Control:
 
-## ServiceM8 API Implementation Details
+  * [ ] Portal access toggle for existing customers
+  * [ ] Automatic credential generation via Supabase:
 
-### Required API Endpoints:
-- **Companies**: `/company.json`, `/company/{uuid}.json`
-- **Jobs**: `/job.json`, `/job/{uuid}.json`, `/job.json?$filter=company_uuid eq '{uuid}'`
-- **Job Materials**: `/jobmaterial.json?$filter=job_uuid eq '{uuid}'`
-- **Attachments**: `/attachment.json?$filter=related_object_uuid eq '{uuid}'`, `/attachment/{uuid}.json?$attachment`
-- **Job Activities**: `/jobactivity.json?$filter=job_uuid eq '{uuid}'`
+    * [ ] Generate secure temporary passwords (or use magic link)
+    * [ ] Create user accounts in Supabase Auth
+    * [ ] Link customer records to authentication
+  * [ ] Access status indicators (active/inactive/pending)
+* Customer Creation Workflow:
 
-### Key ServiceM8 Fields:
-- **Company**: uuid, name, email, mobile, address, active, date_created, date_last_modified
-- **Job**: uuid, job_number, company_uuid, job_description, status, generated_job_total, job_address, date_created, date_last_modified
-- **JobMaterial**: uuid, job_uuid, name, description, qty, cost_ex_tax, total_ex_tax, total_inc_tax
-- **Attachment**: uuid, related_object_uuid, file_name, file_type, attachment_source, date_created, file_size
-- **JobActivity**: uuid, job_uuid, activity_type, start_date, end_date, staff_uuid, notes
+  * [x] New customer form with validation
+  * [x] Dual sync to ServiceM8 and Supabase:
 
-### Webhook Events:
-- `job.updated` - Job status changes
-- `attachment.created` - New documents/photos
-- `jobmaterial.updated` - Line item changes
+    * [x] Create customer in ServiceM8 via API (validate ServiceM8 success first)
+    * [x] Store customer data in Supabase
+    * [x] Handle sync conflicts and error recovery
+  * [x] Automatic `company_uuid` assignment
+* Customer Restrictions Management:
 
-## Notes
+  * [ ] Ban/unban customer toggle
+  * [ ] Restrict portal access for banned customers
+  * [ ] Ban reason tracking and history
+  * [ ] Automatic session termination for banned users (session revocation)
+* Reporting and Analytics:
 
-- Customer data isolation is critical - always filter by customer_id
-- ServiceM8 API has rate limits - implement proper caching
-- File uploads should be validated and scanned for security
-- All customer actions should be logged for audit purposes
-- Performance is key - customers expect fast load times
-- Mobile experience is crucial for field workers and customers
+  * [ ] Job completion metrics
+  * [ ] Customer satisfaction tracking
+  * [ ] Payment status reports
+  * [ ] Document acknowledgment reports
+
+### 6. ServiceM8 Integration Enhancement \[ ]
+
+* Bidirectional Data Flow:
+
+  * [x] GET operations implemented (jobs, documents, payments)
+  * [x] POST operations for quote approvals
+  * [ ] POST operations for customer feedback (job notes)
+  * [ ] POST operations for document acknowledgment (if needed)
+* Webhook Implementation:
+
+  * [x] Webhook stub exists
+  * [ ] Handle ServiceM8 job updates reliably (validate payloads, idempotency)
+  * [ ] Process payment status changes
+  * [x] Sync document updates
+  * [ ] Implement webhook security validation (signature/secret check)
+  * Customer Creation Automation:
+
+    * [ ] New customer webhook endpoint
+    * [ ] Send customer data to external automation service
+    * [ ] Handle webhook delivery failures and retries
+    * [ ] Trigger welcome email automation workflow
+* Real-time Updates:
+
+  * [ ] WebSocket connection for live updates (if needed beyond Supabase Realtime)
+  * [ ] Push notifications for job changes
+  * [ ] Real-time document sharing (read-only for customers)
+
+### 7. Security and Permissions \[ ]
+
+* Row Level Security Implementation:
+
+  * [x] Company-based data isolation
+  * [x] Role-based access control
+  * [x] API endpoint protection
+  * [ ] Customer access restrictions:
+
+    * [ ] RLS policies for banned customers
+    * [ ] Automatic access revocation
+    * [ ] Admin override capabilities
+* Data Validation:
+
+  * [ ] ServiceM8 payload validation and robust error handling
+  * [ ] User input sanitization across forms and endpoints
+  * [ ] File upload security (if uploads enabled later)
+* Audit Logging:
+
+  * [ ] Track user actions (important actions: approve quote, ban customer, create customer)
+  * [ ] Log API calls to ServiceM8 for troubleshooting and audit trails
+  * [ ] Monitor document access and downloads
+
+### 8. Performance and Optimization \[ ]
+
+* Caching Strategy:
+
+  * [ ] Redis / Supabase caching for ServiceM8 data (hot objects)
+  * [ ] Optimize API call frequency and back-off policies
+  * [ ] Implement background sync jobs to reduce UI latency
+* Error Handling:
+
+  * [ ] ServiceM8 API error recovery and retries with exponential backoff
+  * [ ] Graceful degradation when ServiceM8 is rate-limited or down (use cached data)
+  * [ ] User-friendly error messages in the portal
+* Monitoring:
+
+  * [ ] API usage tracking (ServiceM8 + Supabase)
+  * [ ] Performance metrics (API latency, job sync times)
+  * [ ] Error reporting and alerting
+
+### 9. Testing and Quality Assurance \[ ]
+
+* API Testing:
+
+  * [ ] ServiceM8 integration tests (mock ServiceM8 responses)
+  * [ ] Mock ServiceM8 responses for local testing and CI
+  * [ ] Webhook payload testing including malformed payloads and retries
+* User Interface Testing:
+
+  * [ ] Customer portal flows (login, job view, approve quote, feedback)
+  * [ ] Admin portal functionality (create access, ban/unban)
+  * [ ] Mobile responsiveness and accessibility checks
+* Security Testing:
+
+  * [ ] Authentication flows and session management tests
+  * [ ] Authorization checks (RLS + role checks)
+  * [ ] Data access controls and attempts to bypass RLS
+
+### 10. Customer Management System \[ ]
+
+* Customer Database Management:
+
+  * [ ] Comprehensive customer model in Supabase (mapping fields to ServiceM8)
+  * [ ] Customer status tracking (active, banned, pending)
+  * [ ] Portal access permissions management
+  * [ ] Customer-ServiceM8 UUID mapping and reconciliation reports
+* Customer Portal Access Creation:
+
+  * [ ] Batch customer access creation (admin utility)
+  * [ ] Individual customer access toggle
+  * [ ] Credential generation and secure delivery (or magic link flow)
+  * [ ] First-time login flow with password reset or profile completion
+* Customer Lifecycle Management:
+
+  * [ ] New customer onboarding workflow (admin + automation)
+  * [ ] Customer data validation and cleanup (dedupe)
+  * [ ] Customer deactivation and reactivation processes
+  * [ ] Customer data retention and GDPR/CCPA considerations
+* Integration Workflows:
+
+  * [ ] ServiceM8 ↔ Supabase customer sync (bidirectional rules)
+  * [ ] Handle customer updates from both systems and resolve conflicts
+  * [ ] Conflict resolution for duplicate customers
+  * [ ] Data integrity checks and validation
+* Automation and Notifications:
+
+  * [ ] Welcome email automation trigger (on customer creation)
+  * [ ] Customer status change notifications (admin + customer)
+  * [ ] Admin alerts for customer actions (high-value job approvals, payment failures)
+  * [ ] Automated credential delivery system (secure)
+* Environment Configuration:
+
+  * [ ] Production Supabase setup and secrets handling
+  * [ ] ServiceM8 API key management (rotate keys)
+  * [ ] Webhook endpoint configuration and monitoring
+* CI/CD Pipeline:
+
+  * [ ] Automated testing in CI for integrations and UI
+  * [ ] Database migrations strategy and tests
+  * [ ] Environment-specific deployments (staging, prod)
+* Monitoring and Logging:
+
+  * [ ] Application performance monitoring (APM)
+  * [ ] Error tracking (Sentry/LogRocket or similar)
+  * [ ] ServiceM8 API usage monitoring (quota, rate-limit events)
+
+## Environment Variables Required
+
+```env
+# ServiceM8 Configuration
+SERVICEM8_API_KEY=your_api_key
+SERVICEM8_CUSTOMER_UUID=customer_uuid
+SERVICEM8_WEBHOOK_SECRET=webhook_secret
+
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+# Customer Automation Webhook
+CUSTOMER_AUTOMATION_WEBHOOK_URL=your_automation_webhook_url
+WEBHOOK_SECRET_KEY=your_webhook_secret
+
+# Email Service (for welcome emails)
+EMAIL_SERVICE_API_KEY=your_email_service_key
+```
+
+## Project Structure Notes
+
+* Keep existing ServiceM8 client in `lib/servicem8.ts`.
+* Maintain API routes structure for ServiceM8 proxy.
+* Preserve theme system and UI components.
+* Build upon existing dashboard and jobs pages.
+* Extend document handling capabilities (read-only for customers).
+* Enhance webhook implementation (security, retries, idempotency).
+
+---

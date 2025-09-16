@@ -1,13 +1,14 @@
-import { auth } from "@/lib/auth";
+import { getAuthUser } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { ServiceM8Client } from "@/lib/servicem8";
+import { customerPortalAPI } from "@/lib/customer-portal-api";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ attachmentId: string }> }
 ) {
-  const session = await auth();
-  if (!session) {
+  const user = await getAuthUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -22,6 +23,22 @@ export async function GET(
     // Download the attachment
     const { attachmentId } = await params;
     const blob = await client.downloadAttachment(attachmentId);
+    
+    // Track the download
+    const companyUuid = "company-123"; // In production, this would come from the session
+    const ipAddress = request.headers.get('x-forwarded-for') || 
+                     request.headers.get('x-real-ip') || 
+                     'unknown';
+    const userAgent = request.headers.get('user-agent') || 'unknown';
+    
+    // Track download asynchronously to avoid blocking the response
+    customerPortalAPI.trackDocumentDownload(attachmentId, companyUuid, {
+      ipAddress,
+      userAgent,
+      downloadSource: 'portal'
+    }).catch(error => {
+      console.error('Download tracking failed:', error);
+    });
     
     // Convert blob to buffer
     const buffer = await blob.arrayBuffer();

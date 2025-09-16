@@ -1,10 +1,10 @@
-import { auth } from "@/lib/auth";
+import { getAuthUser } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { customerPortalAPI } from "@/lib/customer-portal-api";
 
 export async function GET() {
-  const session = await auth();
-  if (!session) {
+  const user = await getAuthUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

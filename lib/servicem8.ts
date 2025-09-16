@@ -152,6 +152,24 @@ export class ServiceM8Client {
   async getCompany(companyUuid: string): Promise<ServiceM8Company> {
     return this.get<ServiceM8Company>(`/company/${companyUuid}.json`);
   }
+
+  async addJobNote(jobUuid: string, noteData: { note: string; note_type?: string }): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/job/${jobUuid}/note.json`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${btoa(`${this.apiKey}:`)}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        note: noteData.note,
+        note_type: noteData.note_type || 'general'
+      })
+    });
+
+    if (!response.ok) {
+      throw new ServiceM8Error(`Failed to add job note: ${response.statusText}`, response.status);
+    }
+  }
 }
 
 // Rate Limiter

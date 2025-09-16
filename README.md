@@ -69,10 +69,16 @@ A secure, self-service customer portal for ServiceM8 users to view job status, a
 - Supabase project (anon key + URL)
 
 ### Environment variables
-- `SERVICEM8_API_KEY`
+- `SERVICEM8_API_KEY` – live data; if omitted, API serves safe mock data so the UI works
+- `SERVICEM8_CUSTOMER_UUID` – default customer/company UUID to scope jobs for the portal
 - `SERVICEM8_WEBHOOK_SECRET` (optional, recommended in production)
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+ 
+
+Notes:
+- If `SERVICEM8_API_KEY` is not set, `GET /api/servicem8/jobs` returns mock jobs to keep the dashboard functional for demos and development.
+- You can override the company on any request with `?customerId=UUID`.
 
 ### Install & run
 ```bash
@@ -81,6 +87,10 @@ npm run dev
 # build: npm run build
 # start: npm run start
 ```
+
+### Quick verification
+- Open `/dashboard` and confirm cards populate.
+- Visit `/api/servicem8/jobs` to see JSON output. Use `?customerId=YOUR_COMPANY_UUID` to test another customer.
 
 ---
 
@@ -95,7 +105,7 @@ npm run dev
 ---
 
 ## Security & Compliance
-- Session-based access with NextAuth (App Router).
+- Session-based access with Supabase Auth (App Router).
 - Customer data isolation enforced in queries.
 - Audit logging and rate limiting foundations.
 - Recommended: enable RLS policies and encryption for sensitive fields.

@@ -8,12 +8,23 @@ import { EmptyPaymentsState } from "@/components/empty-state";
 import { PaymentStatus } from "@/components/payment-status";
 
 type Payment = {
+  id: string;
   jobNumber: string;
   description: string;
   amount: number;
   status: 'Paid' | 'Pending' | 'Overdue' | 'Partial';
   dueDate?: string;
   paidDate?: string;
+  statusHistory?: PaymentStatusUpdate[];
+};
+
+type PaymentStatusUpdate = {
+  id: string;
+  previous_status: string;
+  new_status: string;
+  updated_at: string;
+  updated_by: string;
+  notes?: string;
 };
 
 export default function PaymentsPage() {
@@ -43,6 +54,8 @@ export default function PaymentsPage() {
   const handleViewInvoice = (paymentId: string) => {
     console.log('View invoice for:', paymentId);
   };
+
+  // Fetch of payment status history is done inside detail views when needed.
 
   if (loading) {
     return <LoadingCard message="Loading payment history..." />;

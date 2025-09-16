@@ -23,11 +23,15 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [sortBy, setSortBy] = useState<"date" | "total">("date");
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/servicem8/jobs", { cache: "no-store" });
+        const params = new URLSearchParams();
+        if (statusFilter) params.set("status", statusFilter);
+        const res = await fetch(`/api/customer-portal/jobs?${params.toString()}`, { cache: "no-store" });
         if (!res.ok) throw new Error("Failed to load jobs");
         const data = await res.json();
         setJobs(data.jobs || []);
@@ -37,7 +41,7 @@ export default function JobsPage() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [statusFilter]);
 
   const handleViewDetails = (jobId: string) => {
     console.log('View details for job:', jobId);
@@ -86,11 +90,51 @@ export default function JobsPage() {
         </p>
       </div>
 
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-gray-600 dark:text-gray-400">Status</label>
+          <select
+            className="border rounded px-2 py-1 bg-background"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="">All</option>
+            <option value="Quote">Quote</option>
+            <option value="Work Order">Work Order</option>
+            <option value="Invoice">Invoice</option>
+            <option value="Complete">Complete</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-gray-600 dark:text-gray-400">Sort by</label>
+          <select
+            className="border rounded px-2 py-1 bg-background"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as 'date' | 'total')}
+          >
+            <option value="date">Date updated</option>
+            <option value="total">Total amount</option>
+          </select>
+        </div>
+        <Button variant="outline" onClick={() => setStatusFilter("")}>Reset</Button>
+      </div>
+
       {jobs.length === 0 ? (
         <EmptyJobsState onRefresh={() => window.location.reload()} />
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {jobs.map((job) => (
+          {jobs
+            .slice()
+            .sort((a, b) => {
+              if (sortBy === "total") {
+                return (b.generated_job_total || 0) - (a.generated_job_total || 0);
+              }
+              const aDate = new Date(a.date_last_modified || a.date_created).getTime();
+              const bDate = new Date(b.date_last_modified || b.date_created).getTime();
+              return bDate - aDate;
+            })
+            .map((job) => (
             <JobCard
               key={job.uuid}
               job={job}

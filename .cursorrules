@@ -1,0 +1,149 @@
+
+# 📌 Client Portal Integration – Compact API Reference
+
+This document maps **Supabase** + **ServiceM8** APIs needed for the **Admin & Customer Portal**.
+It is **flow-based**, focusing on what endpoints are needed and how data should move, not on raw code.
+
+---
+
+## 1. Customer Management
+
+### **Admin Creates New Customer**
+
+* **Supabase:**
+
+  * Insert customer record (table: `customers`).
+  * Generate login credentials (Supabase Auth).
+* **ServiceM8:**
+
+  * Create customer in ServiceM8 via **Client endpoint**.
+* **Flow:**
+
+  1. Admin submits customer form.
+  2. Save record in Supabase.
+  3. Sync with ServiceM8 (POST client).
+  4. Store ServiceM8 `client_uuid` back in Supabase for mapping.
+  5. Trigger webhook → automation sends welcome email.
+
+### **Admin Creates Access for Existing ServiceM8 Customer**
+
+* **Supabase:**
+
+  * Check if customer already exists in ServiceM8.
+  * Create record in Supabase with `client_uuid`.
+  * Generate login credentials with Supabase Auth.
+* **Flow:**
+
+  1. Admin selects existing ServiceM8 client.
+  2. Record created in Supabase.
+  3. Credentials issued.
+  4. Portal now fetches details by `client_uuid`.
+
+### **Ban/Remove Customer**
+
+* **Supabase:**
+
+  * Deactivate credentials in Auth.
+  * Update customer `status = banned`.
+* **Flow:**
+
+  1. Admin bans customer.
+  2. Customer login disabled.
+  3. Access blocked.
+
+---
+
+## 2. Customer Portal Views & Actions
+
+### **View Job List + Status**
+
+* **Supabase:**
+
+  * `jobs` table stores references.
+  * Supabase Realtime pushes updates to portal.
+* **ServiceM8:**
+
+  * Fetch Job details (Job API).
+* **Flow:**
+
+  1. Customer logs in.
+  2. Portal queries Supabase (cached job list).
+  3. Sync pulls latest from ServiceM8 → updates Supabase → realtime update to customer.
+
+### **Approve Quote**
+
+* **Supabase:**
+
+  * Record approval in `quotes` table.
+* **ServiceM8:**
+
+  * Update quote status (Quote API).
+* **Flow:**
+
+  1. Customer clicks approve.
+  2. Approval saved in Supabase.
+  3. Background job updates ServiceM8.
+
+### **Feedback (Text Only)**
+
+* **Supabase:**
+
+  * Save feedback in `feedback` table.
+* **ServiceM8:**
+
+  * (Optional) sync as Job Note via Job API.
+
+### **View/Download Documents**
+
+* **Supabase:**
+
+  * Store doc URLs in `documents` table.
+* **ServiceM8:**
+
+  * Use Document API to fetch job attachments.
+* **Flow:**
+
+  1. Portal shows list of docs linked to job.
+  2. Customer can download only.
+
+### **View Payments**
+
+* **Supabase:**
+
+  * Store payment references in `payments` table.
+* **ServiceM8:**
+
+  * Fetch payment status (Invoice/Payment API).
+
+---
+
+## 3. Notifications (Realtime)
+
+* **Supabase Realtime → Push Portal Updates**
+
+  * Job status updated.
+  * Payment received.
+  * Document acknowledged.
+
+* **Flow:**
+
+  1. ServiceM8 webhook fires on job/payment/document update.
+  2. Middleware updates Supabase tables.
+  3. Supabase Realtime pushes changes to customer portal.
+
+---
+
+## 4. Roles
+
+* **Admin:**
+
+  * Create / sync customers.
+  * Manage access (ban/unban).
+* **Customer:**
+
+  * View jobs, docs, payments.
+  * Approve quotes.
+  * Give feedback.
+  * No job creation/edit.
+
+---

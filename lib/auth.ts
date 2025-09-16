@@ -1,21 +1,32 @@
-import type { NextAuthOptions } from "next-auth";
-import { getServerSession } from "next-auth";
+// Supabase Auth helper for server-side usage
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
-export const authOptions: NextAuthOptions = {
-  providers: [],
-  session: { strategy: "jwt" },
-  callbacks: {
-    async jwt({ token }) {
-      return token;
-    },
-    async session({ session }) {
-      return session;
-    },
-  },
-};
-/**
- * Wrapper to get the server session using NextAuth v4 in App Router.
- */
-export const auth = () => getServerSession(authOptions);
+export async function getSupabaseServerClient() {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
+  return supabase;
+}
+
+export async function getAuthUser() {
+  const supabase = await getSupabaseServerClient();
+  const { data } = await supabase.auth.getUser();
+  return data.user ?? null;
+}
 
 

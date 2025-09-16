@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { getAuthUser } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { ServiceM8Client, QuoteApproval } from "@/lib/servicem8";
 
@@ -6,8 +6,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ jobId: string }> }
 ) {
-  const session = await auth();
-  if (!session) {
+  const user = await getAuthUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

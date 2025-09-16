@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { LoadingSpinner } from './ui/loading';
+import { DocumentAcknowledgment } from './document-acknowledgment';
 
 interface Document {
   uuid: string;
@@ -23,9 +24,17 @@ interface DocumentViewerProps {
   documents: Document[];
   onDownload: (documentId: string) => void;
   onPreview?: (documentId: string) => void;
+  showAcknowledgment?: boolean;
+  acknowledgments?: Record<string, { acknowledgedAt: string; acknowledgedBy: string }>;
 }
 
-export function DocumentViewer({ documents, onDownload, onPreview }: DocumentViewerProps) {
+export function DocumentViewer({ 
+  documents, 
+  onDownload, 
+  onPreview, 
+  showAcknowledgment = false,
+  acknowledgments = {}
+}: DocumentViewerProps) {
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
@@ -69,6 +78,32 @@ export function DocumentViewer({ documents, onDownload, onPreview }: DocumentVie
 
   const handleDownload = (document: Document) => {
     onDownload(document.uuid);
+  };
+
+  const handleAcknowledge = async (data: {
+    documentId: string;
+    signature: string;
+    notes?: string;
+    acknowledgedBy: string;
+  }): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/customer-portal/documents/${data.documentId}/acknowledge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to acknowledge document');
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Acknowledgment error:', error);
+      return false;
+    }
   };
 
   return (
@@ -120,6 +155,19 @@ export function DocumentViewer({ documents, onDownload, onPreview }: DocumentVie
                   </Button>
                 ) : null}
               </div>
+              
+              {/* Document Acknowledgment */}
+              {showAcknowledgment && (
+                <div className="mt-4">
+                  <DocumentAcknowledgment
+                    documentId={document.uuid}
+                    documentName={document.file_name}
+                    isAcknowledged={!!acknowledgments[document.uuid]}
+                    acknowledgedAt={acknowledgments[document.uuid]?.acknowledgedAt}
+                    onAcknowledge={handleAcknowledge}
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
         ))}
