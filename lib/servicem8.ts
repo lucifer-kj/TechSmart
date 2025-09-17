@@ -91,29 +91,18 @@ export class ServiceM8Client {
   }
 
   async get<T>(endpoint: string): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+    return this.fetchWithBackoff<T>(`${this.baseUrl}${endpoint}`, {
+      method: 'GET',
       headers: this.headers,
     });
-
-    if (!response.ok) {
-      throw new ServiceM8Error(`ServiceM8 API Error ${response.status}`, response.status);
-    }
-
-    return response.json();
   }
 
   async post<T>(endpoint: string, data: unknown): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+    return this.fetchWithBackoff<T>(`${this.baseUrl}${endpoint}`, {
       method: 'POST',
       headers: this.headers,
       body: JSON.stringify(data)
     });
-
-    if (!response.ok) {
-      throw new ServiceM8Error(`ServiceM8 API Error ${response.status}`, response.status);
-    }
-
-    return response.json();
   }
 
   // Customer Portal Specific Methods
@@ -122,15 +111,15 @@ export class ServiceM8Client {
   }
 
   async getJobDetails(jobUuid: string): Promise<ServiceM8Job> {
-    return this.get<ServiceM8Job>(`/job/${jobUuid}.json`);
+    return this.getWithCache<ServiceM8Job>(`sm8:job:${jobUuid}`, `/job/${jobUuid}.json`, 300);
   }
 
   async getJobMaterials(jobUuid: string): Promise<ServiceM8JobMaterial[]> {
-    return this.get<ServiceM8JobMaterial[]>(`/jobmaterial.json?$filter=job_uuid eq '${jobUuid}'`);
+    return this.getWithCache<ServiceM8JobMaterial[]>(`sm8:jobmaterials:${jobUuid}`, `/jobmaterial.json?$filter=job_uuid eq '${jobUuid}'`, 300);
   }
 
   async getJobAttachments(jobUuid: string): Promise<ServiceM8Attachment[]> {
-    return this.get<ServiceM8Attachment[]>(`/attachment.json?$filter=related_object_uuid eq '${jobUuid}'`);
+    return this.getWithCache<ServiceM8Attachment[]>(`sm8:attachments:${jobUuid}`, `/attachment.json?$filter=related_object_uuid eq '${jobUuid}'`, 300);
   }
 
   async downloadAttachment(attachmentUuid: string): Promise<Blob> {
@@ -150,7 +139,7 @@ export class ServiceM8Client {
   }
 
   async getCompany(companyUuid: string): Promise<ServiceM8Company> {
-    return this.get<ServiceM8Company>(`/company/${companyUuid}.json`);
+    return this.getWithCache<ServiceM8Company>(`sm8:company:${companyUuid}`, `/company/${companyUuid}.json`, 1800);
   }
 
   async addJobNote(jobUuid: string, noteData: { note: string; note_type?: string }): Promise<void> {
@@ -170,6 +159,124 @@ export class ServiceM8Client {
       throw new ServiceM8Error(`Failed to add job note: ${response.statusText}`, response.status);
     }
   }
+
+  async acknowledgeDocument(documentUuid: string, acknowledgmentData: {
+    acknowledged: boolean;
+    acknowledgment_date: string;
+    customer_signature?: string;
+    notes?: string;
+  }): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/attachment/${documentUuid}/acknowledge.json`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${btoa(`${this.apiKey}:`)}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(acknowledgmentData)
+    });
+
+    if (!response.ok) {
+      throw new ServiceM8Error(`Failed to acknowledge document: ${response.statusText}`, response.status);
+    }
+  }
+
+  async updateJobStatus(jobUuid: string, status: string, notes?: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/job/${jobUuid}.json`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Basic ${btoa(`${this.apiKey}:`)}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        status,
+        notes: notes || undefined
+      })
+    });
+
+    if (!response.ok) {
+      throw new ServiceM8Error(`Failed to update job status: ${response.statusText}`, response.status);
+    }
+  }
+
+  async getJobNotes(jobUuid: string): Promise<Array<{
+    uuid: string;
+    note: string;
+    note_type: string;
+    date_created: string;
+    created_by?: string;
+  }>> {
+    return this.get<Array<{
+      uuid: string;
+      note: string;
+      note_type: string;
+      date_created: string;
+      created_by?: string;
+    }>>(`/job/${jobUuid}/note.json`);
+  }
+
+  // Helpers moved into the class to avoid prototype augmentation and `any` casts
+  private async fetchWithBackoff<T>(url: string, init: RequestInit, retries = 4): Promise<T> {
+    let attempt = 0;
+    let lastError: unknown;
+    while (attempt <= retries) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        const resp = await fetch(url, { ...init, signal: controller.signal });
+        clearTimeout(timeout);
+        if (!resp.ok) throw new ServiceM8Error(`ServiceM8 API Error ${resp.status}`, resp.status);
+        return (await resp.json()) as T;
+      } catch (err) {
+        lastError = err;
+        const base = 300;
+        const delay = Math.min(2000, base * Math.pow(2, attempt)) + Math.random() * 100;
+        await new Promise(r => setTimeout(r, delay));
+        attempt += 1;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('ServiceM8 request failed');
+  }
+
+  private async getWithCache<T>(cacheKey: string, endpoint: string, ttlSeconds: number): Promise<T> {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      );
+
+      type RpcResult<D> = { data: D | null; error: { message: string } | null };
+
+      const { data: cached } = await (supabase as unknown as {
+        rpc<D = unknown>(fn: string, args: Record<string, unknown>): Promise<RpcResult<D>>;
+      }).rpc('cache_get', { p_key: cacheKey });
+
+      if (cached) {
+        return cached as T;
+      }
+
+      const fresh = await this.get<T>(endpoint);
+
+      await (supabase as unknown as {
+        rpc<D = unknown>(fn: string, args: { p_key: string; p_value: unknown; p_ttl_seconds: number }): Promise<RpcResult<D>>;
+      }).rpc('cache_put', { p_key: cacheKey, p_value: fresh, p_ttl_seconds: ttlSeconds });
+
+      return fresh;
+    } catch {
+      return this.get<T>(endpoint);
+    }
+  }
+}
+
+// Backoff + caching helpers
+export type BackoffInit = RequestInit;
+
+export class ServiceM8ClientHelpers {}
+
+export interface CachePutArgs {
+  p_key: string;
+  p_value: unknown;
+  p_ttl_seconds: number;
 }
 
 // Rate Limiter

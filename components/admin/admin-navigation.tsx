@@ -32,6 +32,18 @@ export function AdminNavigation() {
       current: pathname.startsWith("/admin/jobs")
     },
     {
+      name: "Users",
+      href: "/admin/users",
+      icon: "👤",
+      current: pathname.startsWith("/admin/users")
+    },
+    {
+      name: "Documents",
+      href: "/admin/documents",
+      icon: "📄",
+      current: pathname.startsWith("/admin/documents")
+    },
+    {
       name: "Payments",
       href: "/admin/payments",
       icon: "💰",

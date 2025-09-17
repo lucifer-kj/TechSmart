@@ -554,6 +554,8 @@ export class CustomerPortalAPI {
 
   private async getUpcomingSchedule(customerId: string): Promise<unknown[]> {
     // TODO: Implement job activities/scheduling
+    // Reference the parameter to avoid unused-var warnings until implemented
+    void customerId;
     return [];
   }
 
@@ -602,8 +604,12 @@ export class CustomerPortalAPI {
     }
   }
 
-  private getPreviewUrl(_attachment: ServiceM8Attachment): string | undefined {
-    // TODO: Implement preview URL generation for images/PDFs
+  private getPreviewUrl(attachment: ServiceM8Attachment): string | undefined {
+    // Basic preview rule for images/PDFs
+    const type = (attachment.file_type || '').toLowerCase();
+    if (type.includes('pdf') || type.includes('image') || ['jpg','jpeg','png','gif','webp'].some(ext => type.includes(ext))) {
+      return `/api/servicem8/attachments/${attachment.uuid}?preview=1`;
+    }
     return undefined;
   }
 
@@ -626,8 +632,14 @@ export class CustomerPortalAPI {
     return 'Unknown';
   }
 
-  private calculateDueDate(_job: unknown): string | undefined {
-    // TODO: Implement due date calculation logic
+  private calculateDueDate(job: unknown): string | undefined {
+    // Simple heuristic: invoices are due 14 days after creation
+    const jobData = job as { status?: string; created_at?: string };
+    if (jobData.status === 'Invoice' && jobData.created_at) {
+      const created = new Date(jobData.created_at);
+      const due = new Date(created.getTime() + 14 * 24 * 60 * 60 * 1000);
+      return due.toISOString();
+    }
     return undefined;
   }
 }

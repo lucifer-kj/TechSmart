@@ -1,6 +1,7 @@
 import { getAuthUser } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { revokeCustomerAccess, restoreCustomerAccess } from "@/lib/access-revocation";
 
 export async function PUT(
   request: Request,
@@ -29,11 +30,17 @@ export async function PUT(
   try {
     const { customerId } = await params;
     const body = await request.json();
-    const { status } = body;
+    const { status, reason } = body;
 
     if (!status || !['active', 'inactive', 'banned'].includes(status)) {
       return NextResponse.json({ 
         error: "Valid status is required (active, inactive, banned)" 
+      }, { status: 400 });
+    }
+
+    if (status === 'banned' && !reason?.trim()) {
+      return NextResponse.json({ 
+        error: "Ban reason is required when banning a customer" 
       }, { status: 400 });
     }
 
@@ -62,11 +69,40 @@ export async function PUT(
 
     if (updateError) throw updateError;
 
-    // If banning, also revoke all active sessions
+    // Log ban reason if banning
+    if (status === 'banned' && reason) {
+      const { error: logError } = await supabase
+        .from('customer_ban_history')
+        .insert({
+          customer_id: customerId,
+          banned_by: user.id,
+          ban_reason: reason,
+          banned_at: new Date().toISOString()
+        });
+
+      if (logError) {
+        console.warn('Failed to log ban reason:', logError);
+        // Don't fail the whole operation for logging errors
+      }
+    }
+
+    // Handle access revocation/restoration
     if (status === 'banned') {
-      // Note: In a production environment, you might want to implement
-      // session revocation through Supabase Auth Admin API
-      console.log(`Customer ${customerId} banned - sessions should be revoked`);
+      // Revoke access for banned customer
+      const revocationResult = await revokeCustomerAccess(customerId, reason, user.id);
+      
+      if (!revocationResult.success) {
+        console.error('Access revocation failed:', revocationResult.error);
+        // Don't fail the whole operation, but log the issue
+      }
+    } else if (status === 'active') {
+      // Restore access for unbanned customer
+      const restorationResult = await restoreCustomerAccess(customerId, user.id);
+      
+      if (!restorationResult) {
+        console.error('Access restoration failed');
+        // Don't fail the whole operation, but log the issue
+      }
     }
 
     return NextResponse.json({ 

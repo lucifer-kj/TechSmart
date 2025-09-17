@@ -1,7 +1,6 @@
 import { getAuthUser } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { ServiceM8Client } from "@/lib/servicem8";
 
 export async function POST(request: Request) {
   const supabase = createClient(
@@ -50,7 +49,6 @@ export async function POST(request: Request) {
       try {
         const apiKey = process.env.SERVICEM8_API_KEY;
         if (apiKey) {
-          const sm8Client = new ServiceM8Client(apiKey);
           // Note: You'll need to implement createCustomer method in ServiceM8Client
           // For now, we'll generate a UUID and assume it was created
           serviceM8Uuid = `sm8-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

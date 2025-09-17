@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LoadingCard } from "@/components/ui/loading";
 import { CustomerDetailsView } from "@/components/admin/customer-details-view";
@@ -70,14 +70,17 @@ export default function CustomerDetailsPage(props: PageProps) {
 
   const handleBack = () => router.back();
 
-  const handleStatusChange = async (newStatus: 'active' | 'inactive' | 'banned') => {
+  const handleStatusChange = async (newStatus: 'active' | 'inactive' | 'banned', reason?: string) => {
     if (!customer) return;
 
     try {
       const response = await fetch(`/api/admin/customers/${customer.id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ 
+          status: newStatus,
+          reason: reason || undefined
+        })
       });
 
       if (!response.ok) throw new Error('Failed to update customer status');
@@ -91,6 +94,32 @@ export default function CustomerDetailsPage(props: PageProps) {
     } catch (error) {
       console.error('Status update error:', error);
       alert('Failed to update customer status');
+    }
+  };
+
+  const handlePortalAccessToggle = async (hasAccess: boolean) => {
+    if (!customer) return;
+
+    try {
+      const response = await fetch(`/api/admin/customers/${customer.id}/portal-access`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          has_portal_access: hasAccess
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to update portal access');
+      
+      // Reload customer data
+      const customerResponse = await fetch(`/api/admin/customers/${customer.id}`, { cache: "no-store" });
+      if (customerResponse.ok) {
+        const customerData = await customerResponse.json();
+        setCustomer(customerData.customer);
+      }
+    } catch (error) {
+      console.error('Portal access update error:', error);
+      alert('Failed to update portal access');
     }
   };
 
@@ -153,6 +182,7 @@ export default function CustomerDetailsPage(props: PageProps) {
         customer={customer}
         jobs={jobs}
         onStatusChange={handleStatusChange}
+        onPortalAccessToggle={handlePortalAccessToggle}
       />
     </div>
   );

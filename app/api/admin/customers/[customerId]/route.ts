@@ -51,10 +51,10 @@ export async function GET(
       }, { status: 404 });
     }
 
-    // Get user profile info (last login, status)
+    // Get user profile info (last login, status, portal access)
     const { data: userProfile } = await supabase
       .from('user_profiles')
-      .select('last_login, is_active')
+      .select('last_login, is_active, created_at')
       .eq('customer_id', customerId)
       .single();
 
@@ -72,7 +72,9 @@ export async function GET(
       last_login: userProfile?.last_login,
       status: userProfile?.is_active ? 'active' : 'inactive',
       job_count: jobCount,
-      total_value: totalValue
+      total_value: totalValue,
+      has_portal_access: !!userProfile,
+      portal_access_created_at: userProfile?.created_at
     };
 
     return NextResponse.json({ customer: customerWithStats });
