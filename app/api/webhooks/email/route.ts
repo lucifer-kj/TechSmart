@@ -9,6 +9,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Verify webhook signature based on provider
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function verifyWebhookSignature(
   request: NextRequest,
   provider: EmailProvider,

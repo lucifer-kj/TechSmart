@@ -7,7 +7,6 @@ import { LoadingCard } from "@/components/ui/loading";
 import { EmptyJobsState } from "@/components/empty-state";
 import { JobCard } from "@/components/job-card";
 import { useRealtime } from "@/hooks/useRealtime";
-import { RealtimeStatusIndicator } from "@/components/realtime-status-indicator";
 
 type Job = {
   uuid: string;

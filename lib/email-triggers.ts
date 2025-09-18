@@ -3,13 +3,13 @@ import { getEmailTemplateRenderer } from './email-templates';
 import { getNotificationPreferencesService } from './notification-preferences';
 import { createClient as createServerSupabase } from './supabase/server';
 import { 
-  type WelcomeEmailData,
-  type PasswordResetEmailData,
-  type QuoteApprovalEmailData,
-  type JobUpdateEmailData,
-  type PaymentReminderEmailData,
-  type DocumentNotificationEmailData,
-  type InvitationEmailData,
+  // type WelcomeEmailData,
+  // type PasswordResetEmailData,
+  // type QuoteApprovalEmailData,
+  // type JobUpdateEmailData,
+  // type PaymentReminderEmailData,
+  // type DocumentNotificationEmailData,
+  // type InvitationEmailData,
   type EmailTemplate,
 } from './types/email';
 

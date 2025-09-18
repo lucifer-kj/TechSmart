@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // import { getEmailTriggerService } from '@/lib/email-triggers';
 import { z } from 'zod';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const bulkEmailSchema = z.object({
   customerIds: z.array(z.string().uuid()).min(1, 'At least one customer ID is required'),
   template: z.enum([

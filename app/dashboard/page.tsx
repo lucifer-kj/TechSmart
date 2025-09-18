@@ -6,9 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingCard } from "@/components/ui/loading";
 import { JobCard } from "@/components/job-card";
-import { createClient } from "@/lib/supabase/client";
+// import { createClient } from "@/lib/supabase/client";
 import { useRealtime } from "@/hooks/useRealtime";
 import { RealtimeStatusIndicator } from "@/components/realtime-status-indicator";
+import { useAuth } from "@/hooks/useAuth";
+import { NotificationPermission } from "@/components/notifications/notification-permission";
 
 type Job = {
   uuid: string;
@@ -33,6 +35,7 @@ type DashboardStats = {
 };
 
 export default function DashboardPage() {
+  const { user, loading: authLoading } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,22 +66,31 @@ export default function DashboardPage() {
     };
   };
 
-  // Initial data load
+  // Initial data load (wait until auth state is known)
   useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      setLoading(false);
+      setErr("You must be signed in to view jobs.");
+      return;
+    }
+
     (async () => {
       try {
+        setLoading(true);
         const res = await fetch("/api/customer-portal/jobs", { cache: "no-store" });
         if (!res.ok) throw new Error("Failed to load jobs");
         const data = await res.json();
         setJobs(data.jobs || []);
         setStats(calculateStats(data.jobs || []));
+        setErr(null);
       } catch (e: unknown) {
         setErr((e as Error).message || "Error loading jobs");
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [authLoading, user]);
 
   const { status: jobsRtStatus } = useRealtime<Job>({ table: 'jobs' }, ({ eventType, new: newRow, old }) => {
     if (eventType === 'INSERT' && newRow) {
@@ -190,6 +202,8 @@ export default function DashboardPage() {
           </Button>
         </div>
       </div>
+
+      <NotificationPermission />
 
       {/* Stats Cards */}
       {stats && (

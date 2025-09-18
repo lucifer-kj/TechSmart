@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // import { getEmailService } from '@/lib/email-service';
 import { z } from 'zod';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const testEmailSchema = z.object({
   to: z.string().email('Invalid email address'),
   template: z.enum([
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Get sample template data for testing
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function getSampleTemplateData(template: string): Record<string, unknown> {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
   
