@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEmailService } from '@/lib/email-service';
-import { type EmailWebhookPayload, type EmailProvider } from '@/lib/types/email';
+// import { getEmailService } from '@/lib/email-service';
+import { type EmailProvider } from '@/lib/types/email';
 
 // POST - Handle email provider webhooks
 export async function POST(request: NextRequest) {

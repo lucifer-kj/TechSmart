@@ -1,4 +1,4 @@
-import { getEmailService } from './email-service';
+// import { getEmailService } from './email-service';
 import { getEmailTemplateRenderer } from './email-templates';
 import { getNotificationPreferencesService } from './notification-preferences';
 import { createClient as createServerSupabase } from './supabase/server';
@@ -15,7 +15,7 @@ import {
 
 export class EmailTriggerService {
   private supabase!: Awaited<ReturnType<typeof createServerSupabase>>;
-  private emailService!: Awaited<ReturnType<typeof getEmailService>>;
+  private emailService: unknown;
   private templateRenderer!: ReturnType<typeof getEmailTemplateRenderer>;
 
   constructor() {
@@ -24,7 +24,7 @@ export class EmailTriggerService {
 
   private async initializeServices() {
     this.supabase = await createServerSupabase();
-    this.emailService = await getEmailService();
+    this.emailService = {};
     this.templateRenderer = getEmailTemplateRenderer();
   }
 

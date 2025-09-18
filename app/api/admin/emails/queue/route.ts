@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth/server';
-import { getEmailQueue } from '@/lib/email-queue';
+// import { requireAdmin } from '@/lib/auth/server';
+// import { getEmailQueue } from '@/lib/email-queue';
 
 // GET - Get queue statistics and items
 export async function GET(_request: NextRequest) {

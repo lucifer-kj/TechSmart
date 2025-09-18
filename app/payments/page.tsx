@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { LoadingCard } from "@/components/ui/loading";
 import { EmptyPaymentsState } from "@/components/empty-state";
 import { PaymentStatus } from "@/components/payment-status";
+import { useRealtime } from "@/hooks/useRealtime";
+import { RealtimeStatusIndicator } from "@/components/realtime-status-indicator";
 
 type Payment = {
   id: string;
@@ -31,6 +33,7 @@ export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [rtStatus, setRtStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
 
   useEffect(() => {
     (async () => {
@@ -46,6 +49,23 @@ export default function PaymentsPage() {
       }
     })();
   }, []);
+
+  // Listen to payment status updates and new payments
+  const { status } = useRealtime<Payment>({ table: 'payments' }, ({ eventType, new: newRow, old }) => {
+    if (eventType === 'INSERT' && newRow) {
+      setPayments(prev => [newRow as Payment, ...prev]);
+    } else if (eventType === 'UPDATE' && newRow) {
+      const updated = newRow as Payment;
+      setPayments(prev => prev.map(p => p.id === updated.id ? updated : p));
+    } else if (eventType === 'DELETE' && old) {
+      const deleted = old as Payment;
+      setPayments(prev => prev.filter(p => p.id !== deleted.id));
+    }
+  });
+
+  useEffect(() => {
+    setRtStatus(status);
+  }, [status]);
 
   const handlePayNow = (paymentId: string) => {
     console.log('Pay now for:', paymentId);
@@ -83,13 +103,11 @@ export default function PaymentsPage() {
 
   return (
     <div className="px-4 py-8 space-y-6">
-      <div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
           Payments
         </h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">
-          View payment history and manage outstanding invoices
-        </p>
+        <RealtimeStatusIndicator status={rtStatus} />
       </div>
 
       {payments.length === 0 ? (

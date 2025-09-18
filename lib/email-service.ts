@@ -21,7 +21,7 @@ import {
   type InvitationEmailData,
 } from '@/lib/types/email';
 import { createClient as createServerSupabase } from '@/lib/supabase/server';
-import { randomUUID } from 'crypto';
+// import { randomUUID } from 'crypto';
 
 class EmailService {
   private config: EmailServiceConfig;

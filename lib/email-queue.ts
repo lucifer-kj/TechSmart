@@ -5,7 +5,7 @@ import {
   EmailQueueError,
 } from '@/lib/types/email';
 import { createClient as createServerSupabase } from '@/lib/supabase/server';
-import { getEmailService } from './email-service';
+// import { getEmailService } from './email-service';
 
 export class EmailQueue {
   private supabase!: Awaited<ReturnType<typeof createServerSupabase>>;

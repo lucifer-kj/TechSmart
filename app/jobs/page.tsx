@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { LoadingCard } from "@/components/ui/loading";
 import { EmptyJobsState } from "@/components/empty-state";
 import { JobCard } from "@/components/job-card";
+import { useRealtime } from "@/hooks/useRealtime";
+import { RealtimeStatusIndicator } from "@/components/realtime-status-indicator";
 
 type Job = {
   uuid: string;
@@ -25,6 +27,7 @@ export default function JobsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [sortBy, setSortBy] = useState<"date" | "total">("date");
+  // const [rtStatus, setRtStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
 
   useEffect(() => {
     (async () => {
@@ -42,6 +45,18 @@ export default function JobsPage() {
       }
     })();
   }, [statusFilter]);
+
+  useRealtime<Job>({ table: 'jobs' }, ({ eventType, new: newRow, old }) => {
+    if (eventType === 'INSERT' && newRow) {
+      setJobs(prev => [...prev, newRow as Job]);
+    } else if (eventType === 'UPDATE' && newRow) {
+      const updated = newRow as Job;
+      setJobs(prev => prev.map(j => j.uuid === updated.uuid ? updated : j));
+    } else if (eventType === 'DELETE' && old) {
+      const deleted = old as Job;
+      setJobs(prev => prev.filter(j => j.uuid !== deleted.uuid));
+    }
+  });
 
   const handleViewDetails = (jobId: string) => {
     console.log('View details for job:', jobId);
@@ -81,13 +96,11 @@ export default function JobsPage() {
 
   return (
     <div className="px-4 py-8 space-y-6">
-      <div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
           Jobs
         </h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">
-          View and manage all your jobs
-        </p>
+        {/* Realtime status shown in dashboard; omit here for now */}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">

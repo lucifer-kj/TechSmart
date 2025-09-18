@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { LoadingCard } from "@/components/ui/loading";
 import { JobCard } from "@/components/job-card";
 import { createClient } from "@/lib/supabase/client";
+import { useRealtime } from "@/hooks/useRealtime";
+import { RealtimeStatusIndicator } from "@/components/realtime-status-indicator";
 
 type Job = {
   uuid: string;
@@ -39,7 +41,7 @@ export default function DashboardPage() {
   const [sortBy, setSortBy] = useState<'recent' | 'value' | 'status'>('recent');
   const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
 
-  const supabase = createClient();
+  // const supabase = createClient();
 
   // Calculate stats helper function
   const calculateStats = (jobData: Job[]): DashboardStats => {
@@ -78,58 +80,34 @@ export default function DashboardPage() {
     })();
   }, []);
 
-  // Set up realtime subscription for job updates
-  useEffect(() => {
-    const channel = supabase
-      .channel('jobs-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'jobs'
-        },
-        (payload) => {
-          console.log('Job update received:', payload);
-          
-          if (payload.eventType === 'INSERT') {
-            // New job added
-            const newJob = payload.new as Job;
-            setJobs(prev => {
-              const updated = [...prev, newJob];
-              setStats(calculateStats(updated));
-              return updated;
-            });
-          } else if (payload.eventType === 'UPDATE') {
-            // Job updated
-            const updatedJob = payload.new as Job;
-            setJobs(prev => {
-              const updated = prev.map(job => 
-                job.uuid === updatedJob.uuid ? updatedJob : job
-              );
-              setStats(calculateStats(updated));
-              return updated;
-            });
-          } else if (payload.eventType === 'DELETE') {
-            // Job deleted
-            const deletedJob = payload.old as Job;
-            setJobs(prev => {
-              const updated = prev.filter(job => job.uuid !== deletedJob.uuid);
-              setStats(calculateStats(updated));
-              return updated;
-            });
-          }
-        }
-      )
-      .subscribe((status) => {
-        setRealtimeStatus(status as unknown as 'connecting' | 'connected' | 'disconnected');
-        console.log('Realtime status:', status);
+  const { status: jobsRtStatus } = useRealtime<Job>({ table: 'jobs' }, ({ eventType, new: newRow, old }) => {
+    if (eventType === 'INSERT' && newRow) {
+      const newJob = newRow as Job;
+      setJobs(prev => {
+        const updated = [...prev, newJob];
+        setStats(calculateStats(updated));
+        return updated;
       });
+    } else if (eventType === 'UPDATE' && newRow) {
+      const updatedJob = newRow as Job;
+      setJobs(prev => {
+        const updated = prev.map(job => job.uuid === updatedJob.uuid ? updatedJob : job);
+        setStats(calculateStats(updated));
+        return updated;
+      });
+    } else if (eventType === 'DELETE' && old) {
+      const deletedJob = old as Job;
+      setJobs(prev => {
+        const updated = prev.filter(job => job.uuid !== deletedJob.uuid);
+        setStats(calculateStats(updated));
+        return updated;
+      });
+    }
+  });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase]);
+  useEffect(() => {
+    setRealtimeStatus(jobsRtStatus);
+  }, [jobsRtStatus]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-AU', {
@@ -203,18 +181,7 @@ export default function DashboardPage() {
             <p className="text-gray-600 dark:text-gray-400">
               Manage your jobs, quotes, and payments
             </p>
-            <div className="flex items-center gap-1">
-              <div className={`w-2 h-2 rounded-full ${
-                realtimeStatus === 'connected' ? 'bg-green-500' :
-                realtimeStatus === 'connecting' ? 'bg-yellow-500' :
-                'bg-red-500'
-              }`} />
-              <span className="text-xs text-gray-500">
-                {realtimeStatus === 'connected' ? 'Live' :
-                 realtimeStatus === 'connecting' ? 'Connecting' :
-                 'Offline'}
-              </span>
-            </div>
+            <RealtimeStatusIndicator status={realtimeStatus} />
           </div>
         </div>
         <div className="mt-4 sm:mt-0">

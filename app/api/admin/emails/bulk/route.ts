@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth/server';
-import { getEmailTriggerService } from '@/lib/email-triggers';
+// import { requireAdmin } from '@/lib/auth/server';
+// import { getEmailTriggerService } from '@/lib/email-triggers';
 import { z } from 'zod';
 
 const bulkEmailSchema = z.object({

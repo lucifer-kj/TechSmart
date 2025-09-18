@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth/server';
-import { getEmailQueue } from '@/lib/email-queue';
+// import { requireAdmin } from '@/lib/auth/server';
+// import { getEmailQueue } from '@/lib/email-queue';
 
 interface RouteParams {
   params: Promise<{ queueItemId: string }>;

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEmailService } from '@/lib/email-service';
+// import { getEmailService } from '@/lib/email-service';
 import { z } from 'zod';
 
 const testEmailSchema = z.object({
