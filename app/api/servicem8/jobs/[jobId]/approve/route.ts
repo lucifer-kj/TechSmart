@@ -1,6 +1,8 @@
 import { getAuthUser } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { ServiceM8Client, QuoteApproval } from "@/lib/servicem8";
+import { getEmailTriggerService } from '@/lib/email-triggers';
+import { createClient as createServerSupabase } from '@/lib/supabase/server';
 
 export async function POST(
   request: Request,
@@ -31,6 +33,26 @@ export async function POST(
 
     const { jobId } = await params;
     const result = await client.approveQuote(jobId, approvalData);
+
+    // Send quote approval confirmation email
+    try {
+      const supabase = await createServerSupabase();
+      
+      // Get job information to find the customer
+      const { data: job, error: jobError } = await supabase
+        .from('jobs')
+        .select('customer_id, quote_id')
+        .eq('servicem8_job_id', jobId)
+        .single();
+
+      if (!jobError && job) {
+        const emailTriggerService = await getEmailTriggerService();
+        await emailTriggerService.sendQuoteApprovalEmail(job.quote_id, job.customer_id);
+      }
+    } catch (emailError) {
+      console.error('Failed to send quote approval email:', emailError);
+      // Don't fail the request if email fails
+    }
 
     return NextResponse.json({ 
       success: true, 

@@ -32,7 +32,14 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  let userProfile: any = null;
+  interface UserProfileShape {
+    id: string;
+    role: 'admin' | 'customer';
+    is_active: boolean;
+    customer_id?: string | null;
+  }
+
+  let userProfile: UserProfileShape | null = null;
   if (user) {
     const { data: profile } = await supabase
       .from("user_profiles")

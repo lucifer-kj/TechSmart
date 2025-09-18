@@ -42,3 +42,8 @@ export function LoadingCard({ message = 'Loading...' }: LoadingCardProps) {
     </div>
   );
 }
+
+// Simple loading component for general use
+export function Loading({ size = 'md', className = '' }: LoadingSpinnerProps) {
+  return <LoadingSpinner size={size} className={className} />;
+}

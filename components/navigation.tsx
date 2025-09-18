@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { Button } from './ui/button';
+import { useAuth } from '@/hooks/useAuth';
+import { Loading } from './ui/loading';
 
 interface NavigationProps {
   currentPath?: string;
@@ -10,6 +12,25 @@ interface NavigationProps {
 
 export function Navigation({ currentPath = '/' }: NavigationProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { user, profile, loading, signOut, isAdmin } = useAuth();
+
+  // Show loading state while auth is initializing
+  if (loading) {
+    return (
+      <div className="hidden lg:block fixed left-0 top-0 h-full w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
+        <div className="p-6">
+          <div className="flex items-center justify-center h-32">
+            <Loading />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't show navigation if user is not authenticated
+  if (!user) {
+    return null;
+  }
 
   const navigationItems = [
     { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
@@ -18,6 +39,17 @@ export function Navigation({ currentPath = '/' }: NavigationProps) {
     { href: '/payments', label: 'Payments', icon: '💳' },
     { href: '/profile', label: 'Profile', icon: '👤' },
   ];
+
+  // Add admin-specific navigation items
+  if (isAdmin) {
+    navigationItems.push(
+      { href: '/admin/dashboard', label: 'Admin Dashboard', icon: '⚙️' },
+      { href: '/admin/customers', label: 'Customers', icon: '👥' },
+      { href: '/admin/jobs', label: 'All Jobs', icon: '🔧' },
+      { href: '/admin/documents', label: 'Documents', icon: '📄' },
+      { href: '/admin/users', label: 'Users', icon: '👤' }
+    );
+  }
 
   const isActive = (href: string) => {
     return currentPath === href || (href !== '/dashboard' && currentPath.startsWith(href));
@@ -106,18 +138,31 @@ export function Navigation({ currentPath = '/' }: NavigationProps) {
 
           {/* User section */}
           <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                U
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                  {profile?.full_name?.charAt(0)?.toUpperCase() || user.email?.charAt(0)?.toUpperCase() || 'U'}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    {profile?.full_name || 'User'}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {user.email}
+                  </p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 capitalize">
+                    {profile?.role}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                  Customer User
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  customer@smarttech.com
-                </p>
-              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => signOut()}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                Sign Out
+              </Button>
             </div>
           </div>
         </div>
@@ -128,6 +173,13 @@ export function Navigation({ currentPath = '/' }: NavigationProps) {
 
 // Bottom navigation for mobile
 export function BottomNavigation({ currentPath = '/' }: NavigationProps) {
+  const { user, loading } = useAuth();
+
+  // Don't show bottom navigation if user is not authenticated or loading
+  if (loading || !user) {
+    return null;
+  }
+
   const navigationItems = [
     { href: '/dashboard', label: 'Home', icon: '🏠' },
     { href: '/jobs', label: 'Jobs', icon: '🔧' },

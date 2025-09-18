@@ -1,7 +1,9 @@
 'use client';
 import { createClient as createBrowserSupabase } from "@/lib/supabase/client";
 
-export function useAuth() {
+// Legacy auth functions - these are now handled by the AuthContext
+// Keeping for backward compatibility with existing components
+export function useAuthLegacy() {
   const supabase = createBrowserSupabase();
 
   const signIn = async (email: string, password: string) => {

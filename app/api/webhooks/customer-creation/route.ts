@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from 'crypto';
+import { getEmailTriggerService } from '@/lib/email-triggers';
 
 export async function POST(request: Request) {
   const supabase = createClient(
@@ -105,12 +106,8 @@ export async function POST(request: Request) {
     });
 
     // Trigger welcome email workflow
-    const emailResult = await triggerWelcomeEmail({
-      customer_id,
-      customer_name,
-      customer_email,
-      supabase_customer_id: newCustomer.id
-    });
+    const emailTriggerService = await getEmailTriggerService();
+    const emailResult = await emailTriggerService.sendWelcomeEmail(newCustomer.id);
 
     // Update log with results
     await updateCustomerCreationLog(supabase, logId, {
@@ -118,7 +115,7 @@ export async function POST(request: Request) {
       result: JSON.stringify({
         customer_created: true,
         automation_sent: automationResult.success,
-        welcome_email_triggered: emailResult.success
+        welcome_email_triggered: emailResult
       }),
       completed_at: new Date().toISOString()
     });
@@ -128,7 +125,7 @@ export async function POST(request: Request) {
       message: 'Customer creation workflow completed',
       customer_id: newCustomer.id,
       automation_result: automationResult,
-      email_result: emailResult
+      email_result: { success: emailResult }
     });
 
   } catch (error) {
@@ -194,45 +191,6 @@ async function sendToAutomationService(customerData: {
   }
 }
 
-async function triggerWelcomeEmail(customerData: {
-  customer_id: string;
-  customer_name: string;
-  customer_email: string;
-  supabase_customer_id: string;
-}) {
-  const emailServiceUrl = process.env.EMAIL_SERVICE_API_URL;
-  
-  if (!emailServiceUrl) {
-    console.log('No email service URL configured');
-    return { success: false, error: 'No email service configured' };
-  }
-
-  try {
-    const response = await fetch(`${emailServiceUrl}/send-welcome`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.EMAIL_SERVICE_API_KEY}`
-      },
-      body: JSON.stringify({
-        to: customerData.customer_email,
-        customer_name: customerData.customer_name,
-        customer_id: customerData.supabase_customer_id,
-        template: 'welcome',
-        timestamp: new Date().toISOString()
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Email service responded with ${response.status}`);
-    }
-
-    return { success: true, response: await response.json() };
-  } catch (error) {
-    console.error('Email service error:', error);
-    return { success: false, error: (error as Error).message };
-  }
-}
 
 // Utility functions
 import type { SupabaseClient } from "@supabase/supabase-js";
