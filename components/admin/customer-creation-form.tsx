@@ -63,10 +63,24 @@ export function CustomerCreationForm({ onCustomerCreated, onError, onLoading }: 
 
     onLoading(true);
     try {
-      const response = await fetch('/api/admin/customers', {
+      const endpoint = formData.servicem8_customer_uuid
+        ? '/api/admin/customers/link'
+        : '/api/admin/customers';
+      const payload = formData.servicem8_customer_uuid
+        ? {
+            client_uuid: formData.servicem8_customer_uuid,
+            name: formData.name,
+            email: formData.email,
+            phone: formData.phone,
+            address: formData.address,
+            createPortalAccess: formData.createPortalAccess
+          }
+        : formData;
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {

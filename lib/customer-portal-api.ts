@@ -77,7 +77,7 @@ export class CustomerPortalAPI {
         recentActivity: this.formatRecentActivity(jobs),
         upcomingSchedule: await this.getUpcomingSchedule(customer.id),
         pendingApprovals: jobs.filter(j => j.status === 'Quote').length,
-        totalValue: jobs.reduce((sum, job) => sum + (job.generated_job_total || 0), 0)
+        totalValue: jobs.reduce((sum, job) => sum + (Number(job.generated_job_total) || 0), 0)
       };
 
       return dashboardData;
@@ -99,7 +99,7 @@ export class CustomerPortalAPI {
 
       // Apply filters
       if (filters) {
-        jobs = this.applyJobFilters(jobs, filters);
+        jobs = this.applyJobFilters(jobs, filters) as Record<string, unknown>[];
       }
 
       // Enrich with additional data
@@ -112,7 +112,7 @@ export class CustomerPortalAPI {
         }))
       );
 
-      return enrichedJobs;
+      return enrichedJobs as unknown as JobWithDetails[];
     } catch (error) {
       console.error('Jobs list error:', error);
       throw error;
@@ -183,12 +183,12 @@ export class CustomerPortalAPI {
       const invoiceJobs = jobs.filter(j => j.status === 'Invoice' || j.status === 'Complete');
 
       return invoiceJobs.map(job => ({
-        jobNumber: job.job_no || '',
-        description: job.description || '',
-        amount: job.generated_job_total || 0,
+        jobNumber: String(job.job_no || ''),
+        description: String(job.description || ''),
+        amount: Number(job.generated_job_total) || 0,
         status: this.getPaymentStatus(job),
         dueDate: this.calculateDueDate(job),
-        paidDate: job.date_completed
+        paidDate: job.date_completed as string | undefined
       }));
     } catch (error) {
       console.error('Payment history error:', error);

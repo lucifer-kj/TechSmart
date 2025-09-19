@@ -1,8 +1,9 @@
 import { getAuthUser } from "@/lib/auth";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { SyncService } from "@/lib/sync-service";
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -28,8 +29,29 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const customer = searchParams.get('customer');
+    const customerId = searchParams.get('customerId');
     const dateRange = searchParams.get('dateRange');
     const sortBy = searchParams.get('sortBy') || 'date';
+    const refresh = searchParams.get('refresh') === 'true';
+
+    // Optional refresh from ServiceM8 for a specific customer scope
+    if (refresh && customerId) {
+      try {
+        const { data: customerRow } = await supabase
+          .from('customers')
+          .select('servicem8_customer_uuid')
+          .eq('id', customerId)
+          .single();
+        const apiKey = process.env.SERVICEM8_API_KEY;
+        if (apiKey && customerRow?.servicem8_customer_uuid) {
+          const sync = new SyncService(apiKey);
+          await sync.syncCustomerData(customerRow.servicem8_customer_uuid);
+        }
+      } catch (e) {
+        // Non-fatal; proceed with cached data
+        console.warn('Admin jobs refresh failed:', e);
+      }
+    }
 
     // Build query
     let query = supabase
@@ -57,6 +79,10 @@ export async function GET(request: Request) {
 
     if (customer) {
       query = query.or(`customers.name.ilike.%${customer}%,customers.email.ilike.%${customer}%`);
+    }
+
+    if (customerId) {
+      query = query.eq('customer_id', customerId);
     }
 
     if (dateRange) {

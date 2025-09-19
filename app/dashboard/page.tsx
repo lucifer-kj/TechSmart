@@ -157,8 +157,15 @@ export default function DashboardPage() {
     console.log('Download document:', attachmentId);
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return <LoadingCard message="Loading your dashboard..." />;
+  }
+
+  if (!user) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login?redirectTo=/dashboard';
+    }
+    return <LoadingCard message="Redirecting to login..." />;
   }
 
   if (err) {

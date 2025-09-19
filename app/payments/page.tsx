@@ -107,7 +107,29 @@ export default function PaymentsPage() {
         <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
           Payments
         </h1>
-        <RealtimeStatusIndicator status={rtStatus} />
+        <div className="flex items-center gap-2">
+          <RealtimeStatusIndicator status={rtStatus} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              setLoading(true);
+              setErr(null);
+              try {
+                const res = await fetch('/api/customer-portal/payments?refresh=true', { cache: 'no-store' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data?.error || 'Refresh failed');
+                setPayments(data.payments || []);
+              } catch (e) {
+                setErr((e as Error).message);
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
+            🔄 Refresh
+          </Button>
+        </div>
       </div>
 
       {payments.length === 0 ? (

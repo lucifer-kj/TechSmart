@@ -491,6 +491,16 @@ export async function logCustomerBan(
   return service.logCustomerBan(userId, customerId, banReason, ipAddress, userAgent);
 }
 
+export async function logCustomerUnban(
+  userId: string,
+  customerId: string,
+  ipAddress?: string,
+  userAgent?: string
+): Promise<string> {
+  const service = new AuditLoggingService();
+  return service.logCustomerUnban(userId, customerId, ipAddress, userAgent);
+}
+
 export async function logQuoteApproval(
   userId: string,
   jobId: string,

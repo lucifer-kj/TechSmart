@@ -157,7 +157,29 @@ export default function AdminJobsPage() {
           <Button variant="outline" size="sm">
             📊 Export Report
           </Button>
-          <Button variant="outline" size="sm">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={async () => {
+              const params = new URLSearchParams();
+              if (filters.status) params.append('status', filters.status);
+              if (filters.customer) params.append('customer', filters.customer);
+              if (filters.dateRange) params.append('dateRange', filters.dateRange);
+              if (filters.sortBy) params.append('sortBy', filters.sortBy);
+              params.append('refresh', 'true');
+              setLoading(true);
+              try {
+                const res = await fetch(`/api/admin/jobs?${params.toString()}`, { cache: 'no-store' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data?.error || 'Refresh failed');
+                setJobs(data.jobs || []);
+              } catch (e) {
+                setError((e as Error).message);
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
             🔄 Refresh Data
           </Button>
         </div>

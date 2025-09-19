@@ -167,7 +167,28 @@ export default function AdminDocumentsPage() {
           <Button variant="outline" size="sm">
             📊 Approval Report
           </Button>
-          <Button variant="outline" size="sm">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={async () => {
+              const params = new URLSearchParams();
+              if (filters.status) params.append('status', filters.status);
+              if (filters.documentType) params.append('documentType', filters.documentType);
+              if (filters.customer) params.append('customer', filters.customer);
+              params.append('refresh', 'true');
+              setLoading(true);
+              try {
+                const res = await fetch(`/api/admin/documents?${params.toString()}`, { cache: 'no-store' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data?.error || 'Refresh failed');
+                setDocuments(data.documents || []);
+              } catch (e) {
+                setError((e as Error).message);
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
             🔄 Refresh Data
           </Button>
         </div>

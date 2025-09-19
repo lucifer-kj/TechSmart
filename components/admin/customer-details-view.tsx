@@ -190,6 +190,43 @@ export function CustomerDetailsView({ customer, jobs, onStatusChange, onPortalAc
                 <p className="text-sm text-gray-600 dark:text-gray-400">{formatLastLogin(customer.last_login)}</p>
               </div>
             </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const name = prompt('Update name', customer.name) || customer.name;
+                  const email = prompt('Update email', customer.email) || customer.email;
+                  const phone = prompt('Update phone', customer.phone) || customer.phone;
+                  const address = prompt('Update address', customer.address || '') || customer.address || '';
+                  await fetch(`/api/admin/customers/${customer.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, phone, address })
+                  });
+                  location.reload();
+                }}
+              >
+                ✏️ Edit
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setShowBanModal(true)}
+              >
+                🚫 Ban
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  await fetch(`/api/admin/customers/${customer.id}/unban`, { method: 'POST' });
+                  location.reload();
+                }}
+              >
+                ✅ Unban
+              </Button>
+            </div>
             {customer.address && (
               <div>
                 <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Address</label>

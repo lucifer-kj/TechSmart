@@ -99,7 +99,31 @@ export default function JobsPage() {
         <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
           Jobs
         </h1>
-        {/* Realtime status shown in dashboard; omit here for now */}
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              setLoading(true);
+              setErr(null);
+              try {
+                const params = new URLSearchParams();
+                if (statusFilter) params.set('status', statusFilter);
+                params.set('refresh', 'true');
+                const res = await fetch(`/api/customer-portal/jobs?${params.toString()}`, { cache: 'no-store' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data?.error || 'Refresh failed');
+                setJobs(data.jobs || []);
+              } catch (e) {
+                setErr((e as Error).message);
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
+            🔄 Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">

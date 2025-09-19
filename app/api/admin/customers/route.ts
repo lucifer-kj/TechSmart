@@ -1,8 +1,22 @@
 import { getAuthUser } from "@/lib/auth";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { InputSanitizationService, CustomerFormSchema } from "@/lib/input-sanitization";
+import { logSupabaseCall } from "@/lib/api-logging";
+import { logCustomerCreation } from "@/lib/audit-logging";
 
-export async function POST(request: Request) {
+type CreateCustomerRequest = {
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  servicem8_customer_uuid?: string;
+  createPortalAccess?: boolean;
+  generateCredentials?: boolean;
+  sendWelcomeEmail?: boolean;
+};
+
+export async function POST(request: NextRequest) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -23,18 +37,45 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   }
 
+  const startedAt = Date.now();
+  const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || undefined;
+  const userAgent = request.headers.get("user-agent") || undefined;
+
   try {
-    const body = await request.json();
+    // Sanitize and validate body
+    const sanitization = await new InputSanitizationService().sanitizeRequestBody(request, CustomerFormSchema);
+    if (!sanitization.isValid) {
+      await logSupabaseCall("/api/admin/customers", "POST", {}, { error: "Input validation failed", details: sanitization.errors }, 400, Date.now() - startedAt, user.id, ip, userAgent, "validation_error");
+      return NextResponse.json({ error: "Input validation failed", details: sanitization.errors }, { status: 400 });
+    }
+
+    const sanitized = sanitization.sanitizedBody as Record<string, unknown>;
+    const rawBody = await request.json().catch(() => ({}));
+    const flags = (rawBody || {}) as Partial<CreateCustomerRequest>;
+
     const {
       name,
       email,
       phone,
-      address,
+      address
+    } = {
+      name: String(sanitized.name ?? ""),
+      email: (sanitized.email as string | undefined) ?? undefined,
+      phone: (sanitized.phone as string | undefined) ?? undefined,
+      address: (sanitized.address as string | undefined) ?? undefined
+    };
+
+    const {
       servicem8_customer_uuid,
       createPortalAccess,
-      generateCredentials,
-      sendWelcomeEmail
-    } = body;
+      generateCredentials
+    } = {
+      servicem8_customer_uuid: (flags.servicem8_customer_uuid as string | undefined) ?? undefined,
+      createPortalAccess: Boolean(flags.createPortalAccess),
+      generateCredentials: Boolean(flags.generateCredentials)
+    };
+
+    // Note: sendWelcomeEmail flag is available for future email functionality
 
     if (!name?.trim()) {
       return NextResponse.json({ 
@@ -49,18 +90,15 @@ export async function POST(request: Request) {
       try {
         const apiKey = process.env.SERVICEM8_API_KEY;
         if (apiKey) {
-          // Note: You'll need to implement createCustomer method in ServiceM8Client
-          // For now, we'll generate a UUID and assume it was created
+          // Placeholder create; ServiceM8 client create endpoint not implemented in repo
           serviceM8Uuid = `sm8-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         } else {
-          // Use mock UUID for development
           serviceM8Uuid = `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         }
       } catch (error) {
         console.error('ServiceM8 customer creation failed:', error);
-        return NextResponse.json({ 
-          error: "Failed to create customer in ServiceM8" 
-        }, { status: 500 });
+        await logSupabaseCall("/api/admin/customers", "POST", { name, email, phone }, { error: "Failed to create customer in ServiceM8" }, 502, Date.now() - startedAt, user.id, ip, userAgent, (error as Error).message);
+        return NextResponse.json({ error: "Failed to create customer in ServiceM8" }, { status: 502 });
       }
     }
 
@@ -81,7 +119,7 @@ export async function POST(request: Request) {
 
     if (customerError) throw customerError;
 
-    // Create portal access if requested
+    // Create portal access if requested (Auth creation handled elsewhere)
     let tempPassword: string | null = null;
     if (createPortalAccess) {
       
@@ -105,34 +143,24 @@ export async function POST(request: Request) {
         console.error('Profile creation error:', profileError);
         // Don't fail the whole operation, just log the error
       }
-
-      // TODO: Create Supabase Auth user account
-      // This would typically use the Supabase Auth Admin API
-      // For now, we'll just store the temp password in the response
-
-      // Send welcome email if requested
-      if (sendWelcomeEmail && email && tempPassword) {
-        try {
-          // TODO: Implement email sending
-          console.log(`Welcome email would be sent to ${email} with temp password: ${tempPassword}`);
-        } catch (error) {
-          console.error('Email sending failed:', error);
-          // Don't fail the operation for email errors
-        }
-      }
+      // Email handling is out of scope of this endpoint per project rules
     }
 
-    return NextResponse.json({ 
+    const responsePayload = { 
       customer: {
         ...customer,
         tempPassword: createPortalAccess && generateCredentials ? tempPassword : undefined
       }
-    });
+    };
+
+    await logSupabaseCall("/api/admin/customers", "POST", { name, email, phone }, responsePayload, 200, Date.now() - startedAt, user.id, ip, userAgent);
+    await logCustomerCreation(user.id, String(customer.id), { name, email: email ?? undefined, phone: phone ?? undefined, servicem8_uuid: serviceM8Uuid }, ip, userAgent);
+
+    return NextResponse.json(responsePayload);
   } catch (error) {
     console.error('Customer creation error:', error);
-    return NextResponse.json({ 
-      error: 'Failed to create customer' 
-    }, { status: 500 });
+    await logSupabaseCall("/api/admin/customers", "POST", {}, { error: 'Failed to create customer' }, 500, Date.now() - startedAt, user.id, ip, userAgent, (error as Error).message);
+    return NextResponse.json({ error: 'Failed to create customer' }, { status: 500 });
   }
 }
 

@@ -1,8 +1,9 @@
 import { getAuthUser } from "@/lib/auth";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { SyncService } from "@/lib/sync-service";
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -29,6 +30,30 @@ export async function GET(request: Request) {
     const status = searchParams.get('status');
     const documentType = searchParams.get('documentType');
     const customer = searchParams.get('customer');
+    const customerId = searchParams.get('customerId');
+    const jobId = searchParams.get('jobId');
+    const refresh = searchParams.get('refresh') === 'true';
+
+    if (refresh && (customerId || jobId)) {
+      try {
+        const apiKey = process.env.SERVICEM8_API_KEY;
+        if (apiKey) {
+          const sync = new SyncService(apiKey);
+          if (customerId) {
+            const { data: customerRow } = await supabase
+              .from('customers')
+              .select('servicem8_customer_uuid')
+              .eq('id', customerId)
+              .single();
+            if (customerRow?.servicem8_customer_uuid) {
+              await sync.syncCustomerData(customerRow.servicem8_customer_uuid);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Admin documents refresh failed:', e);
+      }
+    }
 
     // Build query for document acknowledgments with related data
     let query = supabase
@@ -60,6 +85,13 @@ export async function GET(request: Request) {
 
     if (customer) {
       query = query.or(`customers.name.ilike.%${customer}%`);
+    }
+
+    if (customerId) {
+      query = query.eq('customers.id', customerId);
+    }
+    if (jobId) {
+      query = query.eq('jobs.id', jobId);
     }
 
     const { data: acknowledgments, error: acknowledgmentsError } = await query;

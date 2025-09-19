@@ -15,7 +15,6 @@ export async function GET(request: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
-    // Derive customer/company from session
     const { data: profile } = await supabase
       .from('user_profiles')
       .select('customer_id')
@@ -26,21 +25,16 @@ export async function GET(request: NextRequest) {
     }
     const { data: customerRow } = await supabase
       .from('customers')
-      .select('id, servicem8_customer_uuid')
+      .select('servicem8_customer_uuid')
       .eq('id', profile.customer_id)
       .single();
     if (!customerRow?.servicem8_customer_uuid) {
       return NextResponse.json({ error: 'Customer mapping not found' }, { status: 404 });
     }
     const companyUuid = customerRow.servicem8_customer_uuid as string;
-    
-    // Parse query parameters for filtering
+
     const { searchParams } = new URL(request.url);
-    const filters = {
-      status: searchParams.get('status'),
-      dateFrom: searchParams.get('dateFrom'),
-      dateTo: searchParams.get('dateTo'),
-    };
+    const jobUuid = searchParams.get('jobId') || undefined;
     const refresh = searchParams.get('refresh') === 'true';
 
     if (refresh) {
@@ -51,11 +45,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const jobs = await customerPortalAPI.getJobsList(companyUuid, filters);
-    
-    return NextResponse.json({ jobs });
+    if (!jobUuid) {
+      return NextResponse.json({ documents: [] });
+    }
+
+    const docs = await customerPortalAPI.getJobDocuments(jobUuid);
+    return NextResponse.json({ documents: docs });
   } catch (error) {
-    console.error('Jobs API Error:', error);
-    return NextResponse.json({ error: 'Failed to fetch jobs' }, { status: 500 });
+    console.error('Portal documents error:', error);
+    return NextResponse.json({ error: 'Failed to fetch documents' }, { status: 500 });
   }
 }
+
+

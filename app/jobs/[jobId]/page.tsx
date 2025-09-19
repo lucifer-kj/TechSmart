@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LoadingCard } from "@/components/ui/loading";
-import { DocumentViewer } from "@/components/document-viewer";
+import { LiveDocumentViewer } from "@/components/documents/live-document-viewer";
+import { DocumentAnnotations } from "@/components/documents/document-annotations";
 import { QuoteApprovalForm } from "@/components/quote-approval-form";
 import { CustomerFeedback } from "@/components/customer-feedback";
 
@@ -19,14 +20,7 @@ type JobMaterial = {
   total_inc_tax: number;
 };
 
-type Attachment = {
-  uuid: string;
-  file_name: string;
-  file_type: string;
-  attachment_source: string;
-  date_created: string;
-  file_size: number;
-};
+// Attachment type removed as it's not currently used
 
 type JobDetails = {
   uuid: string;
@@ -67,24 +61,16 @@ export default function JobDetailPage(props: PageProps) {
     (async () => {
       try {
         const { jobId } = await props.params;
-        const res = await fetch(`/api/servicem8/jobs/${jobId}`);
+        const res = await fetch(`/api/customer-portal/jobs/${jobId}`);
         if (!res.ok) throw new Error("Failed to load job details");
         const data = await res.json();
-
         setJob(data.job);
-        setMaterials(data.materials || []);
-        const docs = (data.attachments || []).map((att: Attachment) => ({
-          ...att,
-          downloadUrl: `/api/servicem8/attachments/${att.uuid}`,
-          category: att.attachment_source?.toLowerCase() === "quote"
-            ? "quote"
-            : att.attachment_source?.toLowerCase() === "invoice"
-            ? "invoice"
-            : att.attachment_source?.toLowerCase() === "photo"
-            ? "photo"
-            : "document",
-        }));
-        setDocuments(docs);
+        setMaterials((data.job?.materials as typeof materials) || []);
+        const docsRes = await fetch(`/api/customer-portal/documents?jobId=${jobId}`, { cache: 'no-store' });
+        if (docsRes.ok) {
+          const docsData = await docsRes.json();
+          setDocuments(docsData.documents || []);
+        }
       } catch (e: unknown) {
         setError((e as Error).message || "Error loading job");
       } finally {
@@ -103,7 +89,7 @@ export default function JobDetailPage(props: PageProps) {
     if (!job) return;
     setApproving(true);
     try {
-      const res = await fetch(`/api/servicem8/jobs/${job.uuid}/approve`, {
+      const res = await fetch(`/api/customer-portal/quotes/${job.uuid}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ signature, notes }),
@@ -215,10 +201,13 @@ export default function JobDetailPage(props: PageProps) {
           <CardTitle>Documents</CardTitle>
         </CardHeader>
         <CardContent>
-          <DocumentViewer
+          <LiveDocumentViewer
             documents={documents}
             onDownload={handleDownload}
           />
+          {documents.map((d) => (
+            <DocumentAnnotations key={d.uuid} documentId={d.uuid} />
+          ))}
         </CardContent>
       </Card>
 

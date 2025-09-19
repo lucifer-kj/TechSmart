@@ -185,7 +185,7 @@ export class SyncService {
       .order('updated', { ascending: false });
 
     if (error) throw error;
-    return data;
+    return data as Array<Record<string, unknown>>;
   }
 
   async isCacheValid(customerId: string, maxAgeMinutes = 5): Promise<boolean> {
@@ -205,5 +205,24 @@ export class SyncService {
     const ageMinutes = (now.getTime() - lastUpdate.getTime()) / (1000 * 60);
 
     return ageMinutes < maxAgeMinutes;
+  }
+
+  async refreshIfStale(companyUuid: string, maxAgeMinutes = 5): Promise<{ refreshed: boolean }> {
+    try {
+      const { data: customer } = await this.supabase
+        .from('customers')
+        .select('id')
+        .eq('servicem8_customer_uuid', companyUuid)
+        .single();
+      if (!customer) return { refreshed: false };
+      const valid = await this.isCacheValid(customer.id, maxAgeMinutes);
+      if (!valid) {
+        await this.syncCustomerData(companyUuid);
+        return { refreshed: true };
+      }
+      return { refreshed: false };
+    } catch {
+      return { refreshed: false };
+    }
   }
 }

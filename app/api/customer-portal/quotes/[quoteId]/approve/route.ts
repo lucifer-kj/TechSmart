@@ -2,20 +2,27 @@ import { getAuthUser } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { customerPortalAPI } from "@/lib/customer-portal-api";
 import { createClient } from "@supabase/supabase-js";
-import { SyncService } from "@/lib/sync-service";
 
-export async function GET(request: NextRequest) {
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ quoteId: string }> }
+) {
   const user = await getAuthUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
+    const { quoteId } = await params;
+    const { signature, notes } = await request.json().catch(() => ({ signature: undefined, notes: undefined }));
+    if (!signature) {
+      return NextResponse.json({ error: 'Signature is required' }, { status: 400 });
+    }
+
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
-    // Derive customer/company from session
     const { data: profile } = await supabase
       .from('user_profiles')
       .select('customer_id')
@@ -26,36 +33,34 @@ export async function GET(request: NextRequest) {
     }
     const { data: customerRow } = await supabase
       .from('customers')
-      .select('id, servicem8_customer_uuid')
+      .select('servicem8_customer_uuid')
       .eq('id', profile.customer_id)
       .single();
     if (!customerRow?.servicem8_customer_uuid) {
       return NextResponse.json({ error: 'Customer mapping not found' }, { status: 404 });
     }
     const companyUuid = customerRow.servicem8_customer_uuid as string;
-    
-    // Parse query parameters for filtering
-    const { searchParams } = new URL(request.url);
-    const filters = {
-      status: searchParams.get('status'),
-      dateFrom: searchParams.get('dateFrom'),
-      dateTo: searchParams.get('dateTo'),
-    };
-    const refresh = searchParams.get('refresh') === 'true';
 
-    if (refresh) {
-      const apiKey = process.env.SERVICEM8_API_KEY;
-      if (apiKey) {
-        const sync = new SyncService(apiKey);
-        await sync.syncCustomerData(companyUuid);
-      }
+    const ok = await customerPortalAPI.approveQuote(quoteId, { signature, notes });
+    if (!ok) {
+      return NextResponse.json({ error: 'Failed to approve quote' }, { status: 502 });
     }
 
-    const jobs = await customerPortalAPI.getJobsList(companyUuid, filters);
-    
-    return NextResponse.json({ jobs });
+    // Record approval intent/status in Supabase quotes table
+    await supabase
+      .from('quotes')
+      .upsert({
+        id: quoteId,
+        company_uuid: companyUuid,
+        status: 'approved',
+        approved_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+
+    return NextResponse.json({ message: 'Quote approved' });
   } catch (error) {
-    console.error('Jobs API Error:', error);
-    return NextResponse.json({ error: 'Failed to fetch jobs' }, { status: 500 });
+    console.error('Quote approval error:', error);
+    return NextResponse.json({ error: 'Failed to approve quote' }, { status: 500 });
   }
 }
+
+
