@@ -107,15 +107,31 @@ The application will be available at `http://localhost:3000`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` – Supabase anonymous key
 - `SUPABASE_SERVICE_ROLE_KEY` – Supabase service role key
 
-**Optional (for development):**
-- `SERVICEM8_API_KEY` – ServiceM8 API key (if omitted, uses mock data)
-- `SERVICEM8_CUSTOMER_UUID` – Default customer UUID (defaults to "company-123")
+**Optional (for ServiceM8 integration):**
+- `SERVICEM8_API_KEY` – ServiceM8 API key (automatically detects company info)
 - `SERVICEM8_WEBHOOK_SECRET` – Webhook secret for production
 
-**Development Features:**
-- If `SERVICEM8_API_KEY` is not set, the application automatically uses mock data
-- Authentication failures fall back to mock data in development mode
-- Missing user profiles are automatically created in development
+**Smart Features:**
+- **Auto-Detection**: ServiceM8 company info is automatically fetched from your API key
+- **Mock Data Fallback**: If no API key is provided, uses realistic mock data for development
+- **Multi-Account Support**: Works with any ServiceM8 account by simply changing the API key
+- **Graceful Degradation**: Authentication failures fall back to mock data in development mode
+
+### ServiceM8 Integration
+
+The app works with **any ServiceM8 account** by simply providing an API key:
+
+1. **Get your ServiceM8 API key** from your ServiceM8 account settings
+2. **Add it to your environment**:
+   ```bash
+   SERVICEM8_API_KEY=your_servicem8_api_key
+   ```
+3. **That's it!** The app automatically:
+   - Detects your company information
+   - Fetches your real ServiceM8 data
+   - Configures itself for your account
+
+📖 **Detailed Setup Guide**: See [ServiceM8 Setup Guide](docs/SERVICEM8_SETUP.md)
 
 ### Quick Verification
 
@@ -126,7 +142,7 @@ The application will be available at `http://localhost:3000`
 
 2. **Test the dashboard:**
    - Navigate to `http://localhost:3000/dashboard`
-   - You should see the dashboard with mock data
+   - You should see the dashboard with your ServiceM8 data (or mock data if no API key)
 
 3. **Test API endpoints:**
    - Visit `http://localhost:3000/api/servicem8/jobs` to see JSON output

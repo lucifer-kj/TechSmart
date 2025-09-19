@@ -39,9 +39,9 @@ export default function UnauthorizedPage() {
           </div>
 
           <div className="space-y-3">
-            <Link href="/dashboard">
+            <Link href="/">
               <Button className="w-full">
-                Go to Dashboard
+                Go to Home
               </Button>
             </Link>
             

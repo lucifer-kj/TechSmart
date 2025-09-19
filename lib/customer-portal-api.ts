@@ -50,7 +50,9 @@ export class CustomerPortalAPI {
       throw new Error('ServiceM8 API key not configured');
     }
     
+    // Initialize with default base URL - will be updated when config is fetched
     this.sm8Client = new ServiceM8Client(apiKey, {
+      baseUrl: 'https://api.servicem8.com/api_1.0',
       timeout: 30000,
       maxRetries: 3,
       retryDelay: 1000

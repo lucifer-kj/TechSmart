@@ -150,18 +150,20 @@ export class ServiceM8Error extends Error {
 
 // ServiceM8 Client Class with enhanced retry logic and timeout handling
 export class ServiceM8Client {
-  private baseUrl = 'https://api.servicem8.com/api_1.0';
+  private baseUrl: string;
   private apiKey: string;
   private defaultTimeout = 30000; // 30 seconds
   private maxRetries = 3;
   private retryDelay = 1000; // 1 second base delay
 
   constructor(apiKey: string, options?: {
+    baseUrl?: string;
     timeout?: number;
     maxRetries?: number;
     retryDelay?: number;
   }) {
     this.apiKey = apiKey;
+    this.baseUrl = options?.baseUrl || 'https://api.servicem8.com/api_1.0';
     if (options) {
       this.defaultTimeout = options.timeout || this.defaultTimeout;
       this.maxRetries = options.maxRetries || this.maxRetries;
@@ -649,7 +651,15 @@ export async function getJobsForCustomer(
   }
 
   try {
-    const client = new ServiceM8Client(apiKey);
+    // Import the config service dynamically to avoid circular dependencies
+    const { getServiceM8Config } = await import('./servicem8-config');
+    const config = await getServiceM8Config();
+    
+    if (!config) {
+      return generateMockJobs(customerId);
+    }
+
+    const client = new ServiceM8Client(apiKey, { baseUrl: config.baseUrl });
     return await client.getCustomerJobs(customerId);
   } catch (error) {
     console.error('ServiceM8 API Error:', error);

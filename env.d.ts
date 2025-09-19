@@ -7,7 +7,7 @@ declare namespace NodeJS {
     SUPABASE_SERVICE_ROLE_KEY?: string;
 
     SERVICEM8_API_KEY?: string;
-    SERVICEM8_CUSTOMER_UUID?: string;
+    SERVICEM8_CUSTOMER_UUID?: string; // Optional - will be auto-detected from API key
     SERVICEM8_WEBHOOK_SECRET?: string;
   }
 }

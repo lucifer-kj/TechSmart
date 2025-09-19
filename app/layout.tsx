@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SmartTech Client Portal",
-  description: "Secure customer portal connected to ServiceM8",
+  title: "SmartTech Portal",
+  description: "Secure portal for customers and administrators connected to ServiceM8",
 };
 
 export default function RootLayout({

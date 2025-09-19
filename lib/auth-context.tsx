@@ -61,11 +61,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
           try {
             const { data: userData } = await supabase.auth.getUser();
             if (userData.user) {
+              // Check if this is an admin user by email domain or specific admin emails
+              const isAdminEmail = userData.user.email?.includes('@admin.') || 
+                                 userData.user.email?.includes('admin@') ||
+                                 userData.user.email === 'admin@smarttech.com';
+              
               const defaultProfile = {
                 id: userId,
                 email: userData.user.email || 'demo@example.com',
                 full_name: userData.user.user_metadata?.full_name || 'Demo User',
-                role: 'customer' as 'admin' | 'customer',
+                role: (isAdminEmail ? 'admin' : 'customer') as 'admin' | 'customer',
                 customer_id: null,
                 is_active: true,
                 created_at: new Date().toISOString(),

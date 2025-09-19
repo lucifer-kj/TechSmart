@@ -36,7 +36,10 @@ export function LoginForm() {
       setIsLoading(false);
       return;
     }
-    router.push(redirectTo);
+    
+    // Let the middleware handle the redirect based on user role
+    // This will redirect to /admin/dashboard for admins or /dashboard for customers
+    router.push("/");
     router.refresh();
   };
 
@@ -49,7 +52,7 @@ export function LoginForm() {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?redirectTo=${encodeURIComponent(redirectTo)}`,
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       });
       
