@@ -15,7 +15,8 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
                      pathname.startsWith('/forgot-password') || 
                      pathname.startsWith('/reset-password') || 
                      pathname.startsWith('/invalid-invitation') ||
-                     pathname.startsWith('/auth/');
+                     pathname.startsWith('/auth/') ||
+                     pathname.startsWith('/unsubscribe');
   
   // Check if we're on an admin page (these have their own layout with AdminNavigation)
   const isAdminPage = pathname.startsWith('/admin/');

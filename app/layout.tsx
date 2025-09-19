@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Navigation, BottomNavigation } from "@/components/navigation";
+// Navigation components are now handled by ConditionalLayout
 import { ErrorBoundary } from "@/components/error-boundary";
 import { AuthProvider } from "@/lib/auth-context";
 import { ConditionalLayout } from "@/components/conditional-layout";
