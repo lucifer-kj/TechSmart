@@ -21,17 +21,22 @@ export default async function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gray-50 dark:bg-gray-900">
       <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold">
-            Sign in to ServiceM8 Portal
+        <div className="text-center">
+          <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900 mb-4">
+            <span className="text-2xl">🔐</span>
+          </div>
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+            Sign in to SmartTech Portal
           </h2>
-          <p className="mt-2 text-center text-sm text-muted-foreground">
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
             Access your jobs, documents, and more
           </p>
         </div>
-        <LoginForm />
+        <div className="bg-white dark:bg-gray-800 py-8 px-6 shadow-xl rounded-lg border border-gray-200 dark:border-gray-700">
+          <LoginForm />
+        </div>
       </div>
     </div>
   );

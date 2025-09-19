@@ -7,8 +7,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <AdminNavigation />
-      <main className="ml-64">
-        {children}
+      <main className="ml-64 min-h-screen">
+        <div className="p-0">
+          {children}
+        </div>
       </main>
     </div>
   );

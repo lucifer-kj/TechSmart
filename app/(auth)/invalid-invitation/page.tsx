@@ -4,24 +4,12 @@ import { Button } from '@/components/ui/button';
 export default function InvalidInvitationPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 text-center">
-        <div>
-          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900 mb-4">
-            <svg
-              className="h-6 w-6 text-red-600 dark:text-red-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+      <div className="max-w-md w-full space-y-8">
+        <div className="text-center">
+          <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-red-100 dark:bg-red-900 mb-4">
+            <span className="text-2xl">❌</span>
           </div>
-          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
             Invalid Invitation
           </h2>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
@@ -29,14 +17,26 @@ export default function InvalidInvitationPage() {
           </p>
         </div>
 
-        <div className="space-y-4">
+        <div className="bg-white dark:bg-gray-800 py-8 px-6 shadow-xl rounded-lg border border-gray-200 dark:border-gray-700 space-y-6">
           <div className="text-sm text-gray-500 dark:text-gray-400">
-            <p>This could happen if:</p>
-            <ul className="mt-2 space-y-1 text-left">
-              <li>• The invitation has expired</li>
-              <li>• The invitation has already been used</li>
-              <li>• The link was copied incorrectly</li>
-              <li>• The invitation was cancelled</li>
+            <p className="font-medium mb-3">This could happen if:</p>
+            <ul className="space-y-2 text-left">
+              <li className="flex items-center">
+                <span className="w-2 h-2 bg-gray-400 rounded-full mr-3"></span>
+                The invitation has expired
+              </li>
+              <li className="flex items-center">
+                <span className="w-2 h-2 bg-gray-400 rounded-full mr-3"></span>
+                The invitation has already been used
+              </li>
+              <li className="flex items-center">
+                <span className="w-2 h-2 bg-gray-400 rounded-full mr-3"></span>
+                The link was copied incorrectly
+              </li>
+              <li className="flex items-center">
+                <span className="w-2 h-2 bg-gray-400 rounded-full mr-3"></span>
+                The invitation was cancelled
+              </li>
             </ul>
           </div>
 
@@ -54,7 +54,7 @@ export default function InvalidInvitationPage() {
             </Link>
           </div>
 
-          <div className="text-center">
+          <div className="text-center pt-4 border-t border-gray-200 dark:border-gray-700">
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Need help? Contact support at{' '}
               <a 

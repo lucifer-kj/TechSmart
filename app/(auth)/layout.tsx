@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import { Navigation, BottomNavigation } from "@/components/navigation";
+import "../globals.css";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { AuthProvider } from "@/lib/auth-context";
-import { ConditionalLayout } from "@/components/conditional-layout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,11 +15,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SmartTech Client Portal",
-  description: "Secure customer portal connected to ServiceM8",
+  title: "SmartTech Client Portal - Authentication",
+  description: "Secure customer portal authentication",
 };
 
-export default function RootLayout({
+export default function AuthLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
@@ -33,9 +31,12 @@ export default function RootLayout({
       >
         <ErrorBoundary>
           <AuthProvider>
-            <ConditionalLayout>
-              {children}
-            </ConditionalLayout>
+            <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+              {/* Full-width layout for auth pages - no sidebar margin */}
+              <main className="w-full">
+                {children}
+              </main>
+            </div>
           </AuthProvider>
         </ErrorBoundary>
       </body>

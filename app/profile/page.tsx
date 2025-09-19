@@ -73,9 +73,9 @@ export default async function ProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <div className="mb-8">
+    <div className="px-4 py-8 space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+        <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
             Profile Settings
           </h1>
@@ -83,9 +83,9 @@ export default async function ProfilePage() {
             Manage your account information and preferences
           </p>
         </div>
-
-        <ProfileManagement initialProfile={extendedProfile} />
       </div>
+
+      <ProfileManagement initialProfile={extendedProfile} />
     </div>
   );
 }
