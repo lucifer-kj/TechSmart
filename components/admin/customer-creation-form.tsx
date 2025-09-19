@@ -34,6 +34,33 @@ export function CustomerCreationForm({ onCustomerCreated, onError, onLoading }: 
   });
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [uuidGenerated, setUuidGenerated] = useState(false);
+
+  // Generate a UUID v4
+  const generateUUID = (): string => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+
+  const handleGenerateUUID = () => {
+    const newUUID = generateUUID();
+    handleInputChange('servicem8_customer_uuid', newUUID);
+    setUuidGenerated(true);
+    // Reset the visual feedback after 2 seconds
+    setTimeout(() => setUuidGenerated(false), 2000);
+  };
+
+  const handleCopyUUID = async () => {
+    try {
+      await navigator.clipboard.writeText(formData.servicem8_customer_uuid);
+      // You could add a toast notification here if you have one
+    } catch (error) {
+      console.error('Failed to copy UUID:', error);
+    }
+  };
 
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
@@ -152,9 +179,34 @@ export function CustomerCreationForm({ onCustomerCreated, onError, onLoading }: 
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
                   placeholder="Enter ServiceM8 UUID (optional)"
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Leave empty for new customers, or enter existing ServiceM8 UUID
-                </p>
+                <div className="flex items-center justify-between mt-1">
+                  <p className="text-xs text-gray-500">
+                    Leave empty for new customers, or enter existing ServiceM8 UUID
+                  </p>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGenerateUUID}
+                      className={`text-xs px-2 py-1 h-auto ${uuidGenerated ? 'bg-green-100 border-green-300 text-green-700' : ''}`}
+                    >
+                      {uuidGenerated ? '✅ Generated!' : '🎲 Generate UUID'}
+                    </Button>
+                    {formData.servicem8_customer_uuid && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleCopyUUID}
+                        className="text-xs px-2 py-1 h-auto"
+                        title="Copy UUID to clipboard"
+                      >
+                        📋 Copy
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
