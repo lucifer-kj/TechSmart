@@ -51,7 +51,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const jobs = await customerPortalAPI.getJobsList(companyUuid, filters);
+    const jobs = await customerPortalAPI.getJobsList(companyUuid, {
+      filters,
+      refresh: refresh || false
+    });
     
     return NextResponse.json({ jobs });
   } catch (error) {

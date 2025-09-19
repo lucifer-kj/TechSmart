@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRealtime } from "@/hooks/useRealtime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +61,24 @@ export default function AdminDocumentsPage() {
   useEffect(() => {
     loadDocuments();
   }, [loadDocuments]); // ✅ react-hooks/exhaustive-deps resolved
+
+  // Realtime: listen to acknowledgment changes which can affect approval lists
+  useRealtime<DocumentApproval>({ table: 'document_acknowledgments' }, ({ eventType, new: newRow, old }) => {
+    setDocuments(prev => {
+      if (eventType === 'INSERT' && newRow) {
+        return [newRow as unknown as DocumentApproval, ...prev];
+      }
+      if (eventType === 'UPDATE' && newRow) {
+        const updated = newRow as unknown as DocumentApproval;
+        return prev.map(d => d.id === updated.id ? updated : d);
+      }
+      if (eventType === 'DELETE' && old) {
+        const deleted = old as unknown as DocumentApproval;
+        return prev.filter(d => d.id !== deleted.id);
+      }
+      return prev;
+    });
+  });
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-AU', {

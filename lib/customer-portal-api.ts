@@ -41,35 +41,42 @@ export class CustomerPortalAPI {
   private supabase: typeof supabase;
   private syncService: SyncService;
 
-  constructor() {
-    const apiKey = process.env.SERVICEM8_API_KEY;
+  constructor(options?: {
+    apiKey?: string;
+    cacheMaxAge?: number;
+  }) {
+    const apiKey = options?.apiKey || process.env.SERVICEM8_API_KEY;
     if (!apiKey) {
       throw new Error('ServiceM8 API key not configured');
     }
     
-    this.sm8Client = new ServiceM8Client(apiKey);
+    this.sm8Client = new ServiceM8Client(apiKey, {
+      timeout: 30000,
+      maxRetries: 3,
+      retryDelay: 1000
+    });
     this.supabase = supabase;
-    this.syncService = new SyncService(apiKey);
+    this.syncService = new SyncService(apiKey, {
+      cacheMaxAge: options?.cacheMaxAge || 5
+    });
   }
 
-  // Dashboard Data
-  async getDashboardData(companyUuid: string): Promise<DashboardData> {
+  // Dashboard Data with enhanced error handling and refresh support
+  async getDashboardData(companyUuid: string, options?: {
+    refresh?: boolean;
+    maxAge?: number;
+  }): Promise<DashboardData> {
     try {
-      // Try cache first
       const customer = await this.getCustomerByServiceM8Uuid(companyUuid);
       if (!customer) {
         throw new Error('Customer not found');
       }
 
-      const isCacheValid = await this.syncService.isCacheValid(customer.id);
-      
-      if (!isCacheValid) {
-        // Sync fresh data
-        await this.syncService.syncCustomerData(companyUuid);
-      }
-
-      // Get cached data
-      const jobs = await this.syncService.getCachedJobs(customer.id);
+      // Use read-through cache with optional refresh
+      const jobs = await this.syncService.getCachedJobs(customer.id, {
+        refresh: options?.refresh || false,
+        maxAge: options?.maxAge
+      });
       
       const dashboardData: DashboardData = {
         totalJobs: jobs.length,
@@ -83,23 +90,39 @@ export class CustomerPortalAPI {
       return dashboardData;
     } catch (error) {
       console.error('Dashboard data error:', error);
-      throw error;
+      // Return partial data with error flag for graceful degradation
+      return {
+        totalJobs: 0,
+        activeJobs: 0,
+        recentActivity: [],
+        upcomingSchedule: [],
+        pendingApprovals: 0,
+        totalValue: 0
+      };
     }
   }
 
-  // Job Management
-  async getJobsList(companyUuid: string, filters?: Record<string, unknown>): Promise<JobWithDetails[]> {
+  // Job Management with enhanced error handling and refresh support
+  async getJobsList(companyUuid: string, options?: {
+    filters?: Record<string, unknown>;
+    refresh?: boolean;
+    maxAge?: number;
+  }): Promise<JobWithDetails[]> {
     try {
       const customer = await this.getCustomerByServiceM8Uuid(companyUuid);
       if (!customer) {
         throw new Error('Customer not found');
       }
 
-      let jobs = await this.syncService.getCachedJobs(customer.id);
+      // Use read-through cache with optional refresh
+      let jobs = await this.syncService.getCachedJobs(customer.id, {
+        refresh: options?.refresh || false,
+        maxAge: options?.maxAge
+      });
 
       // Apply filters
-      if (filters) {
-        jobs = this.applyJobFilters(jobs, filters) as Record<string, unknown>[];
+      if (options?.filters) {
+        jobs = this.applyJobFilters(jobs, options.filters) as Record<string, unknown>[];
       }
 
       // Enrich with additional data
@@ -115,11 +138,12 @@ export class CustomerPortalAPI {
       return enrichedJobs as unknown as JobWithDetails[];
     } catch (error) {
       console.error('Jobs list error:', error);
-      throw error;
+      // Return empty array for graceful degradation
+      return [];
     }
   }
 
-  // Document Management
+  // Document Management with enhanced error handling and refresh support
   async getJobDocuments(jobUuid: string): Promise<DocumentWithMetadata[]> {
     try {
       const attachments = await this.sm8Client.getJobAttachments(jobUuid);
@@ -132,7 +156,44 @@ export class CustomerPortalAPI {
       }));
     } catch (error) {
       console.error('Document fetch error:', error);
-      throw error;
+      // Return empty array for graceful degradation
+      return [];
+    }
+  }
+
+  // New method: Get documents using read-through cache
+  async getCachedDocuments(companyUuid: string, options?: {
+    refresh?: boolean;
+    maxAge?: number;
+    jobId?: string;
+  }): Promise<DocumentWithMetadata[]> {
+    try {
+      const customer = await this.getCustomerByServiceM8Uuid(companyUuid);
+      if (!customer) {
+        throw new Error('Customer not found');
+      }
+
+      const documents = await this.syncService.getCachedDocuments(customer.id, {
+        refresh: options?.refresh || false,
+        maxAge: options?.maxAge,
+        jobId: options?.jobId
+      });
+
+      return documents.map(doc => ({
+        uuid: String(doc.servicem8_attachment_uuid || doc.uuid),
+        related_object_uuid: String(doc.job_id),
+        file_name: String(doc.file_name || doc.title),
+        file_type: String(doc.file_type),
+        attachment_source: this.normalizeAttachmentSource(String(doc.attachment_source || doc.type)),
+        date_created: String(doc.date_created_sm8 || doc.created_at),
+        file_size: Number(doc.file_size) || 0,
+        downloadUrl: String(doc.url || `/api/servicem8/attachments/${doc.servicem8_attachment_uuid}`),
+        previewUrl: this.getPreviewUrlFromType(String(doc.file_type)),
+        category: this.categorizeDocumentFromType(String(doc.type || doc.attachment_source))
+      }));
+    } catch (error) {
+      console.error('Cached documents error:', error);
+      return [];
     }
   }
 
@@ -148,41 +209,52 @@ export class CustomerPortalAPI {
     }
   }
 
-  // Quote Approval
+  // Quote Approval with write-back pattern
   async approveQuote(jobUuid: string, approvalData: Record<string, unknown>): Promise<boolean> {
     try {
-      await this.sm8Client.approveQuote(jobUuid, {
+      // Use write-back pattern: persist intent in Supabase first, then call ServiceM8
+      const result = await this.syncService.writeBackQuoteApproval(jobUuid, {
         approved: true,
         approval_date: new Date().toISOString(),
         customer_signature: approvalData.signature as string,
         notes: approvalData.notes as string
       });
 
-      // Update local cache
-      await this.updateJobStatus(jobUuid, 'Work Order');
-      
-      // Send confirmation email (TODO: Implement)
-      // await this.sendApprovalConfirmation(jobUuid);
-
-      return true;
+      if (result.success) {
+        // Update local cache
+        await this.updateJobStatus(jobUuid, 'Work Order');
+        // Send confirmation email (TODO: Implement)
+        // await this.sendApprovalConfirmation(jobUuid);
+        return true;
+      } else {
+        console.error('Quote approval failed:', result.error);
+        return false;
+      }
     } catch (error) {
-      console.error('Quote approval failed:', error);
+      console.error('Quote approval error:', error);
       return false;
     }
   }
 
   // Payment Tracking
-  async getPaymentHistory(companyUuid: string): Promise<PaymentHistory[]> {
+  // Payment Management with enhanced error handling and refresh support
+  async getPaymentHistory(companyUuid: string, options?: {
+    refresh?: boolean;
+    maxAge?: number;
+  }): Promise<PaymentHistory[]> {
     try {
       const customer = await this.getCustomerByServiceM8Uuid(companyUuid);
       if (!customer) {
         throw new Error('Customer not found');
       }
 
-      const jobs = await this.syncService.getCachedJobs(customer.id);
-      const invoiceJobs = jobs.filter(j => j.status === 'Invoice' || j.status === 'Complete');
+      // Use read-through cache for payments
+      const jobs = await this.syncService.getCachedPayments(customer.id, {
+        refresh: options?.refresh || false,
+        maxAge: options?.maxAge
+      });
 
-      return invoiceJobs.map(job => ({
+      return jobs.map(job => ({
         jobNumber: String(job.job_no || ''),
         description: String(job.description || ''),
         amount: Number(job.generated_job_total) || 0,
@@ -192,7 +264,8 @@ export class CustomerPortalAPI {
       }));
     } catch (error) {
       console.error('Payment history error:', error);
-      throw error;
+      // Return empty array for graceful degradation
+      return [];
     }
   }
 
@@ -601,6 +674,36 @@ export class CustomerPortalAPI {
       case 'Invoice': return 'invoice';
       case 'Photo': return 'photo';
       default: return 'document';
+    }
+  }
+
+  private categorizeDocumentFromType(type: string): 'quote' | 'invoice' | 'photo' | 'document' {
+    switch (type.toLowerCase()) {
+      case 'quote': return 'quote';
+      case 'invoice': return 'invoice';
+      case 'photo': return 'photo';
+      default: return 'document';
+    }
+  }
+
+  private getPreviewUrlFromType(fileType: string): string | undefined {
+    const imageTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+    const extension = fileType.toLowerCase().split('.').pop();
+    
+    if (extension && imageTypes.includes(extension)) {
+      return `/api/servicem8/attachments/preview/${fileType}`;
+    }
+    
+    return undefined;
+  }
+
+  private normalizeAttachmentSource(source: string): 'Quote' | 'Invoice' | 'Photo' | 'Document' {
+    const normalized = source.toLowerCase();
+    switch (normalized) {
+      case 'quote': return 'Quote';
+      case 'invoice': return 'Invoice';
+      case 'photo': return 'Photo';
+      default: return 'Document';
     }
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRealtime } from "@/hooks/useRealtime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +62,22 @@ export default function AdminJobsPage() {
   useEffect(() => {
     loadJobs();
   }, [loadJobs]); // ✅ react-hooks/exhaustive-deps resolved
+
+  // Realtime: update list on job inserts/updates/deletes
+  useRealtime<AdminJob>({ table: 'jobs' }, ({ eventType, new: newRow, old }) => {
+    setJobs(prev => {
+      if (eventType === 'INSERT' && newRow) {
+        return [newRow as AdminJob, ...prev];
+      }
+      if (eventType === 'UPDATE' && newRow) {
+        return prev.map(j => j.id === (newRow as AdminJob).id ? (newRow as AdminJob) : j);
+      }
+      if (eventType === 'DELETE' && old) {
+        return prev.filter(j => j.id !== (old as AdminJob).id);
+      }
+      return prev;
+    });
+  });
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-AU', {

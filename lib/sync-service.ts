@@ -8,10 +8,16 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export class SyncService {
   private sm8Client: ServiceM8Client;
   private supabase: typeof supabase;
+  private defaultCacheMaxAge = 5; // minutes
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, options?: {
+    cacheMaxAge?: number; // in minutes
+  }) {
     this.sm8Client = new ServiceM8Client(apiKey);
     this.supabase = supabase;
+    if (options?.cacheMaxAge) {
+      this.defaultCacheMaxAge = options.cacheMaxAge;
+    }
   }
 
   async syncCustomerData(companyUuid: string) {
@@ -173,7 +179,34 @@ export class SyncService {
     if (error) throw error;
   }
 
-  async getCachedJobs(customerId: string) {
+  // Read-through cache pattern: reads from Supabase, optionally refreshes from ServiceM8
+  async getCachedJobs(customerId: string, options?: {
+    refresh?: boolean;
+    maxAge?: number;
+  }): Promise<Array<Record<string, unknown>>> {
+    const refresh = options?.refresh || false;
+    const maxAge = options?.maxAge || this.defaultCacheMaxAge;
+
+    // If refresh is requested or cache is stale, sync from ServiceM8 first
+    if (refresh || !(await this.isCacheValid(customerId, maxAge))) {
+      try {
+        // Get company UUID for ServiceM8 sync
+        const { data: customer } = await this.supabase
+          .from('customers')
+          .select('servicem8_customer_uuid')
+          .eq('id', customerId)
+          .single();
+
+        if (customer?.servicem8_customer_uuid) {
+          await this.syncCustomerData(customer.servicem8_customer_uuid);
+        }
+      } catch (error) {
+        console.warn('Failed to refresh jobs from ServiceM8, using cached data:', error);
+        // Continue with cached data if refresh fails
+      }
+    }
+
+    // Return cached data from Supabase
     const { data, error } = await this.supabase
       .from('jobs')
       .select(`
@@ -205,6 +238,152 @@ export class SyncService {
     const ageMinutes = (now.getTime() - lastUpdate.getTime()) / (1000 * 60);
 
     return ageMinutes < maxAgeMinutes;
+  }
+
+  // Read-through cache for documents
+  async getCachedDocuments(customerId: string, options?: {
+    refresh?: boolean;
+    maxAge?: number;
+    jobId?: string;
+  }): Promise<Array<Record<string, unknown>>> {
+    const refresh = options?.refresh || false;
+    const maxAge = options?.maxAge || this.defaultCacheMaxAge;
+    const jobId = options?.jobId;
+
+    // If refresh is requested or cache is stale, sync from ServiceM8 first
+    if (refresh || !(await this.isCacheValid(customerId, maxAge))) {
+      try {
+        const { data: customer } = await this.supabase
+          .from('customers')
+          .select('servicem8_customer_uuid')
+          .eq('id', customerId)
+          .single();
+
+        if (customer?.servicem8_customer_uuid) {
+          await this.syncCustomerData(customer.servicem8_customer_uuid);
+        }
+      } catch (error) {
+        console.warn('Failed to refresh documents from ServiceM8, using cached data:', error);
+      }
+    }
+
+    // Build query
+    let query = this.supabase
+      .from('documents')
+      .select('*')
+      .eq('customer_id', customerId);
+
+    if (jobId) {
+      query = query.eq('job_id', jobId);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data as Array<Record<string, unknown>>;
+  }
+
+  // Read-through cache for payments (derived from jobs with Invoice/Complete status)
+  async getCachedPayments(customerId: string, options?: {
+    refresh?: boolean;
+    maxAge?: number;
+  }): Promise<Array<Record<string, unknown>>> {
+    const refresh = options?.refresh || false;
+    const maxAge = options?.maxAge || this.defaultCacheMaxAge;
+
+    // If refresh is requested or cache is stale, sync from ServiceM8 first
+    if (refresh || !(await this.isCacheValid(customerId, maxAge))) {
+      try {
+        const { data: customer } = await this.supabase
+          .from('customers')
+          .select('servicem8_customer_uuid')
+          .eq('id', customerId)
+          .single();
+
+        if (customer?.servicem8_customer_uuid) {
+          await this.syncCustomerData(customer.servicem8_customer_uuid);
+        }
+      } catch (error) {
+        console.warn('Failed to refresh payments from ServiceM8, using cached data:', error);
+      }
+    }
+
+    // Get jobs that represent payments (Invoice or Complete status)
+    const { data, error } = await this.supabase
+      .from('jobs')
+      .select('*')
+      .eq('customer_id', customerId)
+      .in('status', ['Invoice', 'Complete'])
+      .order('updated', { ascending: false });
+
+    if (error) throw error;
+    return data as Array<Record<string, unknown>>;
+  }
+
+  // Write-back pattern: persist intent in Supabase first, then call ServiceM8
+  async writeBackQuoteApproval(jobUuid: string, approvalData: {
+    approved: boolean;
+    approval_date: string;
+    customer_signature?: string;
+    notes?: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      // First, persist the approval intent in Supabase
+      const { data: job } = await this.supabase
+        .from('jobs')
+        .select('id, customer_id, servicem8_job_uuid')
+        .eq('servicem8_job_uuid', jobUuid)
+        .single();
+
+      if (!job) {
+        throw new Error('Job not found in database');
+      }
+
+      // Insert approval record
+      const { error: insertError } = await this.supabase
+        .from('quotes')
+        .insert({
+          job_id: job.id,
+          customer_id: job.customer_id,
+          servicem8_job_uuid: jobUuid,
+          approved: approvalData.approved,
+          approval_date: approvalData.approval_date,
+          customer_signature: approvalData.customer_signature,
+          notes: approvalData.notes,
+          status: 'pending', // Will be updated after ServiceM8 call
+          created_at: new Date().toISOString()
+        });
+
+      if (insertError) throw insertError;
+
+      // Then call ServiceM8
+      await this.sm8Client.approveQuote(jobUuid, approvalData);
+
+      // Update status to confirmed
+      await this.supabase
+        .from('quotes')
+        .update({ status: 'confirmed', updated_at: new Date().toISOString() })
+        .eq('servicem8_job_uuid', jobUuid);
+
+      return { success: true };
+    } catch (error) {
+      console.error('Write-back quote approval failed:', error);
+      
+      // Update status to failed
+      try {
+        await this.supabase
+          .from('quotes')
+          .update({ status: 'failed', updated_at: new Date().toISOString() })
+          .eq('servicem8_job_uuid', jobUuid);
+      } catch (updateError) {
+        console.error('Failed to update quote status to failed:', updateError);
+      }
+
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      };
+    }
   }
 
   async refreshIfStale(companyUuid: string, maxAgeMinutes = 5): Promise<{ refreshed: boolean }> {

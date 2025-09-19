@@ -55,79 +55,98 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Build query for document acknowledgments with related data
+    // Build query for documents with related data
     let query = supabase
-      .from('document_acknowledgments')
+      .from('documents')
       .select(`
         id,
-        document_id,
-        signature,
-        notes,
-        acknowledged_by,
-        acknowledged_at,
+        servicem8_attachment_uuid,
+        file_name,
+        file_type,
+        file_size,
+        attachment_source,
+        type,
+        title,
+        url,
+        date_created_sm8,
         created_at,
+        customer_id,
+        job_id,
         customers!inner(
           id,
-          name
+          name,
+          email
         ),
         jobs!inner(
           id,
           job_no,
-          description
+          description,
+          status
         )
       `);
 
     // Apply filters
-    if (status) {
-      // For now, we'll filter in memory since we need to determine status from the data
-      // In a production app, you might want to add a status field to the table
+    if (documentType) {
+      query = query.eq('type', documentType);
     }
 
     if (customer) {
-      query = query.or(`customers.name.ilike.%${customer}%`);
+      query = query.or(`customers.name.ilike.%${customer}%,customers.email.ilike.%${customer}%`);
     }
 
     if (customerId) {
-      query = query.eq('customers.id', customerId);
+      query = query.eq('customer_id', customerId);
     }
+    
     if (jobId) {
-      query = query.eq('jobs.id', jobId);
+      query = query.eq('job_id', jobId);
     }
 
-    const { data: acknowledgments, error: acknowledgmentsError } = await query;
+    const { data: documents, error: documentsError } = await query;
 
-    if (acknowledgmentsError) throw acknowledgmentsError;
+    if (documentsError) throw documentsError;
 
-    // Transform the data to match our DocumentApproval interface
-    type AckRow = {
+    // Transform the data to provide comprehensive document information
+    type DocumentRow = {
       id: string;
-      document_id: string;
-      signature: string | null;
-      notes: string | null;
-      acknowledged_by: string | null;
-      acknowledged_at: string | null;
-      created_at: string | null;
-      jobs: { id: string; job_no: string; description: string }[];
-      customers: { id: string; name: string }[];
+      servicem8_attachment_uuid: string;
+      file_name: string;
+      file_type: string;
+      file_size: number;
+      attachment_source: string;
+      type: string;
+      title: string;
+      url: string;
+      date_created_sm8: string;
+      created_at: string;
+      customer_id: string;
+      job_id: string;
+      jobs: { id: string; job_no: string; description: string; status: string }[];
+      customers: { id: string; name: string; email: string }[];
     };
 
-    const transformedDocuments = (acknowledgments as AckRow[] | null)?.map(ack => {
-      const job = Array.isArray(ack.jobs) ? ack.jobs[0] : undefined;
-      const customer = Array.isArray(ack.customers) ? ack.customers[0] : undefined;
+    const transformedDocuments = (documents as DocumentRow[] | null)?.map(doc => {
+      const job = Array.isArray(doc.jobs) ? doc.jobs[0] : undefined;
+      const customer = Array.isArray(doc.customers) ? doc.customers[0] : undefined;
       return {
-        id: ack.id,
-        document_id: ack.document_id,
-        document_name: `Document ${ack.document_id}`,
-        document_type: 'contract' as const,
-        job_id: job?.id ?? '',
-        job_number: job?.job_no ?? '',
-        customer_id: customer?.id ?? '',
+        id: doc.id,
+        uuid: doc.servicem8_attachment_uuid,
+        file_name: doc.file_name || doc.title,
+        file_type: doc.file_type,
+        file_size: doc.file_size,
+        attachment_source: doc.attachment_source,
+        type: doc.type,
+        url: doc.url,
+        date_created: doc.date_created_sm8 || doc.created_at,
+        customer_id: doc.customer_id,
         customer_name: customer?.name ?? 'Unknown',
-        status: 'approved' as const,
-        submitted_at: ack.acknowledged_at ?? ack.created_at ?? '',
-        reviewed_at: ack.acknowledged_at ?? undefined,
-        reviewed_by: ack.acknowledged_by ?? undefined,
-        review_notes: ack.notes ?? undefined
+        customer_email: customer?.email ?? '',
+        job_id: doc.job_id,
+        job_number: job?.job_no ?? '',
+        job_description: job?.description ?? '',
+        job_status: job?.status ?? '',
+        download_url: doc.url || `/api/servicem8/attachments/${doc.servicem8_attachment_uuid}`,
+        preview_url: getPreviewUrl(doc.file_type)
       };
     }) || [];
 
@@ -135,13 +154,7 @@ export async function GET(request: NextRequest) {
     let filteredDocuments = transformedDocuments;
     
     if (status) {
-      filteredDocuments = filteredDocuments.filter(doc => doc.status === status);
-    }
-    
-    if (documentType) {
-      filteredDocuments = filteredDocuments.filter(doc => 
-        doc.document_type.toLowerCase() === documentType.toLowerCase()
-      );
+      filteredDocuments = filteredDocuments.filter(doc => doc.job_status === status);
     }
 
     return NextResponse.json({ documents: filteredDocuments });
@@ -149,4 +162,15 @@ export async function GET(request: NextRequest) {
     console.error('Admin documents error:', error);
     return NextResponse.json({ error: 'Failed to load documents' }, { status: 500 });
   }
+}
+
+function getPreviewUrl(fileType: string): string | undefined {
+  const imageTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+  const extension = fileType.toLowerCase().split('.').pop();
+  
+  if (extension && imageTypes.includes(extension)) {
+    return `/api/servicem8/attachments/preview/${fileType}`;
+  }
+  
+  return undefined;
 }

@@ -2,7 +2,6 @@ import { getAuthUser } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { customerPortalAPI } from "@/lib/customer-portal-api";
 import { createClient } from "@supabase/supabase-js";
-import { SyncService } from "@/lib/sync-service";
 
 export async function GET(request: NextRequest) {
   const user = await getAuthUser();
@@ -34,15 +33,13 @@ export async function GET(request: NextRequest) {
     const companyUuid = customerRow.servicem8_customer_uuid as string;
     const { searchParams } = new URL(request.url);
     const refresh = searchParams.get('refresh') === 'true';
-    if (refresh) {
-      const apiKey = process.env.SERVICEM8_API_KEY;
-      if (apiKey) {
-        const sync = new SyncService(apiKey);
-        await sync.syncCustomerData(companyUuid);
-      }
-    }
-    
-    const paymentHistory = await customerPortalAPI.getPaymentHistory(companyUuid);
+    const maxAge = searchParams.get('maxAge') ? parseInt(searchParams.get('maxAge')!) : undefined;
+
+    // Use the enhanced customer portal API with read-through cache
+    const paymentHistory = await customerPortalAPI.getPaymentHistory(companyUuid, {
+      refresh,
+      maxAge
+    });
     
     return NextResponse.json({ payments: paymentHistory });
   } catch (error) {

@@ -2,7 +2,6 @@ import { getAuthUser } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { customerPortalAPI } from "@/lib/customer-portal-api";
 import { createClient } from "@supabase/supabase-js";
-import { SyncService } from "@/lib/sync-service";
 
 export async function GET(request: NextRequest) {
   const user = await getAuthUser();
@@ -34,22 +33,17 @@ export async function GET(request: NextRequest) {
     const companyUuid = customerRow.servicem8_customer_uuid as string;
 
     const { searchParams } = new URL(request.url);
-    const jobUuid = searchParams.get('jobId') || undefined;
+    const jobId = searchParams.get('jobId') || undefined;
     const refresh = searchParams.get('refresh') === 'true';
+    const maxAge = searchParams.get('maxAge') ? parseInt(searchParams.get('maxAge')!) : undefined;
 
-    if (refresh) {
-      const apiKey = process.env.SERVICEM8_API_KEY;
-      if (apiKey) {
-        const sync = new SyncService(apiKey);
-        await sync.syncCustomerData(companyUuid);
-      }
-    }
+    // Use the enhanced customer portal API with read-through cache
+    const docs = await customerPortalAPI.getCachedDocuments(companyUuid, {
+      refresh,
+      maxAge,
+      jobId
+    });
 
-    if (!jobUuid) {
-      return NextResponse.json({ documents: [] });
-    }
-
-    const docs = await customerPortalAPI.getJobDocuments(jobUuid);
     return NextResponse.json({ documents: docs });
   } catch (error) {
     console.error('Portal documents error:', error);

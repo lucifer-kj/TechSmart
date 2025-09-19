@@ -63,26 +63,93 @@ export interface QuoteApproval {
   notes?: string;
 }
 
-// ServiceM8 Error Class
+// ServiceM8 Error Class with enhanced error normalization
 export class ServiceM8Error extends Error {
   status?: number;
-  constructor(message: string, status?: number) {
+  code?: string;
+  retryable: boolean;
+  details?: unknown;
+  
+  constructor(message: string, status?: number, code?: string, retryable = false, details?: unknown) {
     super(message);
     this.name = "ServiceM8Error";
     this.status = status;
+    this.code = code;
+    this.retryable = retryable;
+    this.details = details;
+  }
+
+  // Normalize ServiceM8 API errors into consistent format
+  static fromResponse(response: Response, body?: unknown): ServiceM8Error {
+    const status = response.status;
+    let message = `ServiceM8 API Error ${status}`;
+    let code = `HTTP_${status}`;
+    let retryable = false;
+    const details = body;
+
+    // Map HTTP status codes to normalized error types
+    switch (status) {
+      case 400:
+        message = 'Bad Request - Invalid parameters';
+        code = 'BAD_REQUEST';
+        break;
+      case 401:
+        message = 'Unauthorized - Invalid API key';
+        code = 'UNAUTHORIZED';
+        break;
+      case 403:
+        message = 'Forbidden - Insufficient permissions';
+        code = 'FORBIDDEN';
+        break;
+      case 404:
+        message = 'Not Found - Resource does not exist';
+        code = 'NOT_FOUND';
+        break;
+      case 429:
+        message = 'Rate Limit Exceeded';
+        code = 'RATE_LIMITED';
+        retryable = true;
+        break;
+      case 500:
+        message = 'Internal Server Error';
+        code = 'SERVER_ERROR';
+        retryable = true;
+        break;
+      case 502:
+      case 503:
+      case 504:
+        message = 'Service Unavailable';
+        code = 'SERVICE_UNAVAILABLE';
+        retryable = true;
+        break;
+    }
+
+    return new ServiceM8Error(message, status, code, retryable, details);
   }
 }
 
-// ServiceM8 Client Class
+// ServiceM8 Client Class with enhanced retry logic and timeout handling
 export class ServiceM8Client {
   private baseUrl = 'https://api.servicem8.com/api_1.0';
   private apiKey: string;
+  private defaultTimeout = 30000; // 30 seconds
+  private maxRetries = 3;
+  private retryDelay = 1000; // 1 second base delay
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, options?: {
+    timeout?: number;
+    maxRetries?: number;
+    retryDelay?: number;
+  }) {
     this.apiKey = apiKey;
+    if (options) {
+      this.defaultTimeout = options.timeout || this.defaultTimeout;
+      this.maxRetries = options.maxRetries || this.maxRetries;
+      this.retryDelay = options.retryDelay || this.retryDelay;
+    }
   }
 
-  private get headers() {
+  private get headers(): Record<string, string> {
     return {
       'X-API-Key': this.apiKey,
       'Content-Type': 'application/json',
@@ -90,19 +157,51 @@ export class ServiceM8Client {
     };
   }
 
-  async get<T>(endpoint: string): Promise<T> {
-    return this.fetchWithBackoff<T>(`${this.baseUrl}${endpoint}`, {
+  async get<T>(endpoint: string, options?: {
+    timeout?: number;
+    idempotencyKey?: string;
+  }): Promise<T> {
+    const headers = { ...this.headers };
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
+
+    return this.fetchWithRetry<T>(`${this.baseUrl}${endpoint}`, {
       method: 'GET',
-      headers: this.headers,
-    });
+      headers,
+    }, options?.timeout);
   }
 
-  async post<T>(endpoint: string, data: unknown): Promise<T> {
-    return this.fetchWithBackoff<T>(`${this.baseUrl}${endpoint}`, {
+  async post<T>(endpoint: string, data: unknown, options?: {
+    timeout?: number;
+    idempotencyKey?: string;
+  }): Promise<T> {
+    const headers = { ...this.headers };
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
+
+    return this.fetchWithRetry<T>(`${this.baseUrl}${endpoint}`, {
       method: 'POST',
-      headers: this.headers,
+      headers,
       body: JSON.stringify(data)
-    });
+    }, options?.timeout);
+  }
+
+  async put<T>(endpoint: string, data: unknown, options?: {
+    timeout?: number;
+    idempotencyKey?: string;
+  }): Promise<T> {
+    const headers = { ...this.headers };
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
+
+    return this.fetchWithRetry<T>(`${this.baseUrl}${endpoint}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(data)
+    }, options?.timeout);
   }
 
   // Customer Portal Specific Methods
@@ -134,30 +233,19 @@ export class ServiceM8Client {
     return response.blob();
   }
 
-  async approveQuote(jobUuid: string, approvalData: QuoteApproval): Promise<unknown> {
-    return this.post(`/job/${jobUuid}/approve.json`, approvalData);
+  async approveQuote(jobUuid: string, approvalData: QuoteApproval, idempotencyKey?: string): Promise<unknown> {
+    return this.post(`/job/${jobUuid}/approve.json`, approvalData, { idempotencyKey });
   }
 
   async getCompany(companyUuid: string): Promise<ServiceM8Company> {
     return this.getWithCache<ServiceM8Company>(`sm8:company:${companyUuid}`, `/company/${companyUuid}.json`, 1800);
   }
 
-  async addJobNote(jobUuid: string, noteData: { note: string; note_type?: string }): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/job/${jobUuid}/note.json`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${btoa(`${this.apiKey}:`)}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        note: noteData.note,
-        note_type: noteData.note_type || 'general'
-      })
-    });
-
-    if (!response.ok) {
-      throw new ServiceM8Error(`Failed to add job note: ${response.statusText}`, response.status);
-    }
+  async addJobNote(jobUuid: string, noteData: { note: string; note_type?: string }, idempotencyKey?: string): Promise<void> {
+    await this.post(`/job/${jobUuid}/note.json`, {
+      note: noteData.note,
+      note_type: noteData.note_type || 'general'
+    }, { idempotencyKey });
   }
 
   async acknowledgeDocument(documentUuid: string, acknowledgmentData: {
@@ -165,37 +253,15 @@ export class ServiceM8Client {
     acknowledgment_date: string;
     customer_signature?: string;
     notes?: string;
-  }): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/attachment/${documentUuid}/acknowledge.json`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${btoa(`${this.apiKey}:`)}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(acknowledgmentData)
-    });
-
-    if (!response.ok) {
-      throw new ServiceM8Error(`Failed to acknowledge document: ${response.statusText}`, response.status);
-    }
+  }, idempotencyKey?: string): Promise<void> {
+    await this.post(`/attachment/${documentUuid}/acknowledge.json`, acknowledgmentData, { idempotencyKey });
   }
 
-  async updateJobStatus(jobUuid: string, status: string, notes?: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/job/${jobUuid}.json`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Basic ${btoa(`${this.apiKey}:`)}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        status,
-        notes: notes || undefined
-      })
-    });
-
-    if (!response.ok) {
-      throw new ServiceM8Error(`Failed to update job status: ${response.statusText}`, response.status);
-    }
+  async updateJobStatus(jobUuid: string, status: string, notes?: string, idempotencyKey?: string): Promise<void> {
+    await this.put(`/job/${jobUuid}.json`, {
+      status,
+      notes: notes || undefined
+    }, { idempotencyKey });
   }
 
   async getJobNotes(jobUuid: string): Promise<Array<{
@@ -214,27 +280,98 @@ export class ServiceM8Client {
     }>>(`/job/${jobUuid}/note.json`);
   }
 
-  // Helpers moved into the class to avoid prototype augmentation and `any` casts
-  private async fetchWithBackoff<T>(url: string, init: RequestInit, retries = 4): Promise<T> {
-    let attempt = 0;
-    let lastError: unknown;
-    while (attempt <= retries) {
+  // Enhanced retry logic with exponential backoff and proper error handling
+  private async fetchWithRetry<T>(url: string, init: RequestInit, timeoutMs?: number): Promise<T> {
+    const timeout = timeoutMs || this.defaultTimeout;
+    let lastError: ServiceM8Error | null = null;
+    
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
-        const resp = await fetch(url, { ...init, signal: controller.signal });
-        clearTimeout(timeout);
-        if (!resp.ok) throw new ServiceM8Error(`ServiceM8 API Error ${resp.status}`, resp.status);
-        return (await resp.json()) as T;
-      } catch (err) {
-        lastError = err;
-        const base = 300;
-        const delay = Math.min(2000, base * Math.pow(2, attempt)) + Math.random() * 100;
-        await new Promise(r => setTimeout(r, delay));
-        attempt += 1;
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        
+        const response = await fetch(url, { 
+          ...init, 
+          signal: controller.signal 
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          let responseBody: unknown;
+          try {
+            responseBody = await response.json();
+          } catch {
+            responseBody = await response.text();
+          }
+          
+          const error = ServiceM8Error.fromResponse(response, responseBody);
+          
+          // Only retry if error is retryable and we haven't exceeded max retries
+          if (error.retryable && attempt < this.maxRetries) {
+            lastError = error;
+            const delay = this.calculateRetryDelay(attempt);
+            await this.sleep(delay);
+            continue;
+          }
+          
+          throw error;
+        }
+        
+        return (await response.json()) as T;
+        
+      } catch (error) {
+        if (error instanceof ServiceM8Error) {
+          lastError = error;
+          
+          // Don't retry non-retryable errors
+          if (!error.retryable || attempt >= this.maxRetries) {
+            throw error;
+          }
+          
+          const delay = this.calculateRetryDelay(attempt);
+          await this.sleep(delay);
+          continue;
+        }
+        
+        // Handle network errors, timeouts, etc.
+        if (error instanceof Error) {
+          if (error.name === 'AbortError') {
+            throw new ServiceM8Error('Request timeout', 408, 'TIMEOUT', true);
+          }
+          
+          // Network errors are retryable
+          if (attempt < this.maxRetries) {
+            lastError = new ServiceM8Error(
+              `Network error: ${error.message}`, 
+              0, 
+              'NETWORK_ERROR', 
+              true
+            );
+            const delay = this.calculateRetryDelay(attempt);
+            await this.sleep(delay);
+            continue;
+          }
+          
+          throw new ServiceM8Error(`Network error: ${error.message}`, 0, 'NETWORK_ERROR', false);
+        }
+        
+        throw new ServiceM8Error('Unknown error occurred', 0, 'UNKNOWN_ERROR', false);
       }
     }
-    throw lastError instanceof Error ? lastError : new Error('ServiceM8 request failed');
+    
+    throw lastError || new ServiceM8Error('Request failed after all retries', 0, 'MAX_RETRIES_EXCEEDED', false);
+  }
+
+  private calculateRetryDelay(attempt: number): number {
+    // Exponential backoff with jitter
+    const baseDelay = this.retryDelay * Math.pow(2, attempt);
+    const jitter = Math.random() * 1000; // Add up to 1 second of jitter
+    return Math.min(baseDelay + jitter, 10000); // Cap at 10 seconds
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   private async getWithCache<T>(cacheKey: string, endpoint: string, ttlSeconds: number): Promise<T> {
@@ -304,24 +441,33 @@ export class RateLimiter {
   }
 }
 
-// Utility function for making ServiceM8 requests with rate limiting
-export async function makeServiceM8Request<T>(endpoint: string, apiKey: string): Promise<T> {
+// Utility functions for ServiceM8 operations
+export function generateIdempotencyKey(operation: string, identifier: string): string {
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(2, 15);
+  return `${operation}-${identifier}-${timestamp}-${random}`;
+}
+
+export async function makeServiceM8Request<T>(endpoint: string, apiKey: string, options?: {
+  timeout?: number;
+  idempotencyKey?: string;
+}): Promise<T> {
   const rateLimiter = new RateLimiter();
   
   if (!rateLimiter.canMakeRequest(apiKey)) {
-    throw new ServiceM8Error('Rate limit exceeded', 429);
+    throw new ServiceM8Error('Rate limit exceeded', 429, 'RATE_LIMITED', true);
   }
 
   try {
     const client = new ServiceM8Client(apiKey);
-    const result = await client.get<T>(endpoint);
+    const result = await client.get<T>(endpoint, options);
     rateLimiter.recordRequest(apiKey);
     return result;
   } catch (error) {
     if (error instanceof ServiceM8Error && error.status === 429) {
       // Exponential backoff
       await new Promise(resolve => setTimeout(resolve, 2000));
-      return makeServiceM8Request<T>(endpoint, apiKey);
+      return makeServiceM8Request<T>(endpoint, apiKey, options);
     }
     throw error;
   }
