@@ -1,9 +1,10 @@
 import { getAuthUser } from "@/lib/auth";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { customerPortalAPI } from "@/lib/customer-portal-api";
+import { createClient } from "@supabase/supabase-js";
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ documentId: string }> }
 ) {
   const user = await getAuthUser();
@@ -12,21 +13,44 @@ export async function POST(
   }
 
   try {
-    const { documentId } = await params;
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    
+    // Derive customer/company from session
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('customer_id')
+      .eq('id', user.id)
+      .single();
+    
+    if (!profile?.customer_id) {
+      return NextResponse.json({ error: 'Customer profile not found' }, { status: 404 });
+    }
+    
+    const { data: customerRow } = await supabase
+      .from('customers')
+      .select('id, servicem8_customer_uuid')
+      .eq('id', profile.customer_id)
+      .single();
+    
+    if (!customerRow?.servicem8_customer_uuid) {
+      return NextResponse.json({ error: 'Customer mapping not found' }, { status: 404 });
+    }
+    
+    const companyUuid = customerRow.servicem8_customer_uuid as string;
+    
     const body = await request.json();
     const { signature, notes, acknowledgedBy } = body;
-
-    if (!signature || !acknowledgedBy) {
-      return NextResponse.json({ 
-        error: "Signature and acknowledged by are required" 
-      }, { status: 400 });
-    }
-
-    // For now, use a mock company UUID - in production, this would come from the session
-    const companyUuid = "company-123";
     
+    if (!signature || !acknowledgedBy) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+    
+    const resolvedParams = await params;
     const success = await customerPortalAPI.acknowledgeDocument(
-      documentId,
+      resolvedParams.documentId,
       {
         signature,
         notes,
@@ -35,20 +59,14 @@ export async function POST(
       },
       companyUuid
     );
-
-    if (success) {
-      return NextResponse.json({ 
-        message: "Document acknowledged successfully" 
-      });
-    } else {
-      return NextResponse.json({ 
-        error: "Failed to acknowledge document" 
-      }, { status: 500 });
+    
+    if (!success) {
+      return NextResponse.json({ error: 'Failed to acknowledge document' }, { status: 500 });
     }
+    
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Document acknowledgment error:', error);
-    return NextResponse.json({ 
-      error: 'Failed to acknowledge document' 
-    }, { status: 500 });
+    console.error('Document acknowledgment API Error:', error);
+    return NextResponse.json({ error: 'Failed to acknowledge document' }, { status: 500 });
   }
 }

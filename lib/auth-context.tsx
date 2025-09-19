@@ -16,6 +16,7 @@ interface AuthState {
 interface AuthContextType extends AuthState {
   signIn: (email: string, password: string) => Promise<{ data: unknown; error: unknown }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ data: unknown; error: unknown }>;
+  signInWithMagicLink: (email: string, redirectTo?: string) => Promise<{ data: unknown; error: unknown }>;
   signOut: () => Promise<{ error: unknown }>;
   resetPassword: (email: string) => Promise<{ data: unknown; error: unknown }>;
   refreshSession: () => Promise<void>;
@@ -235,6 +236,38 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [supabase]);
 
+  const signInWithMagicLink = useCallback(async (email: string, redirectTo?: string) => {
+    try {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+      const result = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?redirectTo=${encodeURIComponent(redirectTo || '/dashboard')}`,
+        },
+      });
+      
+      if (result.error) {
+        setState(prev => ({ 
+          ...prev, 
+          loading: false, 
+          error: result.error.message 
+        }));
+      } else {
+        setState(prev => ({ ...prev, loading: false }));
+      }
+      
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setState(prev => ({ 
+        ...prev, 
+        loading: false, 
+        error: errorMessage 
+      }));
+      return { data: null, error: { message: errorMessage } };
+    }
+  }, [supabase]);
+
   const resetPassword = useCallback(async (email: string) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
@@ -301,6 +334,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     ...state,
     signIn,
     signUp,
+    signInWithMagicLink,
     signOut,
     resetPassword,
     refreshSession,

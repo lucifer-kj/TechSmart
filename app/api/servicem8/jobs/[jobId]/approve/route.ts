@@ -1,11 +1,10 @@
 import { getAuthUser } from "@/lib/auth";
-import { NextResponse } from "next/server";
-import { ServiceM8Client, QuoteApproval } from "@/lib/servicem8";
-import { getEmailTriggerService } from '@/lib/email-triggers';
-import { createClient as createServerSupabase } from '@/lib/supabase/server';
+import { NextRequest, NextResponse } from "next/server";
+import { customerPortalAPI } from "@/lib/customer-portal-api";
+import { createClient } from "@supabase/supabase-js";
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   const user = await getAuthUser();
@@ -13,54 +12,61 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const apiKey = process.env.SERVICEM8_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "ServiceM8 API key not configured" }, { status: 500 });
-  }
-
   try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    
+    // Derive customer/company from session
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('customer_id')
+      .eq('id', user.id)
+      .single();
+    
+    if (!profile?.customer_id) {
+      return NextResponse.json({ error: 'Customer profile not found' }, { status: 404 });
+    }
+    
+    const { data: customerRow } = await supabase
+      .from('customers')
+      .select('id, servicem8_customer_uuid')
+      .eq('id', profile.customer_id)
+      .single();
+    
+    if (!customerRow?.servicem8_customer_uuid) {
+      return NextResponse.json({ error: 'Customer mapping not found' }, { status: 404 });
+    }
+    
+    // const companyUuid = customerRow.servicem8_customer_uuid as string;
+    
     const body = await request.json();
     const { signature, notes } = body;
-
-    const client = new ServiceM8Client(apiKey);
     
-    const approvalData: QuoteApproval = {
-      approved: true,
-      approval_date: new Date().toISOString(),
-      customer_signature: signature,
-      notes: notes
-    };
-
-    const { jobId } = await params;
-    const result = await client.approveQuote(jobId, approvalData);
-
-    // Send quote approval confirmation email
-    try {
-      const supabase = await createServerSupabase();
-      
-      // Get job information to find the customer
-      const { data: job, error: jobError } = await supabase
-        .from('jobs')
-        .select('customer_id, quote_id')
-        .eq('servicem8_job_id', jobId)
-        .single();
-
-      if (!jobError && job) {
-        const emailTriggerService = await getEmailTriggerService();
-        await emailTriggerService.sendQuoteApprovalEmail(job.quote_id, job.customer_id);
-      }
-    } catch (emailError) {
-      console.error('Failed to send quote approval email:', emailError);
-      // Don't fail the request if email fails
+    if (!signature) {
+      return NextResponse.json({ error: 'Signature is required' }, { status: 400 });
     }
-
+    
+    const resolvedParams = await params;
+    const success = await customerPortalAPI.approveQuote(resolvedParams.jobId, {
+      signature,
+      notes: notes || '',
+      approvedBy: (user as { email?: string }).email || 'Unknown',
+      approvedAt: new Date().toISOString()
+    });
+    
+    if (!success) {
+      return NextResponse.json({ error: 'Failed to approve quote' }, { status: 500 });
+    }
+    
     return NextResponse.json({ 
       success: true, 
-      message: "Quote approved successfully",
-      result 
+      message: 'Quote approved successfully',
+      jobId: resolvedParams.jobId 
     });
   } catch (error) {
-    console.error('ServiceM8 API Error:', error);
+    console.error('Quote approval API Error:', error);
     return NextResponse.json({ error: 'Failed to approve quote' }, { status: 500 });
   }
 }
