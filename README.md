@@ -182,4 +182,6 @@ For comprehensive setup instructions, including database configuration, authenti
 ## Contributing
 Issues and PRs are welcome. Please avoid committing secrets and ensure changes pass linting and type checks.
 
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/lucifer-kj/TechSmart?utm_source=oss&utm_medium=github&utm_campaign=lucifer-kj%2FTechSmart&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
+
 
