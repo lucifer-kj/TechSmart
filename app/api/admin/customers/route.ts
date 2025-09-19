@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { InputSanitizationService, CustomerFormSchema } from "@/lib/input-sanitization";
 import { logSupabaseCall } from "@/lib/api-logging";
 import { logCustomerCreation } from "@/lib/audit-logging";
+import { ServiceM8Client, generateIdempotencyKey } from "@/lib/servicem8";
 
 type CreateCustomerRequest = {
   name: string;
@@ -90,14 +91,25 @@ export async function POST(request: NextRequest) {
       try {
         const apiKey = process.env.SERVICEM8_API_KEY;
         if (apiKey) {
-          // Placeholder create; ServiceM8 client create endpoint not implemented in repo
-          serviceM8Uuid = `sm8-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          const serviceM8Client = new ServiceM8Client(apiKey);
+          const idempotencyKey = generateIdempotencyKey('create-client', name);
+          
+          const serviceM8Customer = await serviceM8Client.createClient({
+            name: name.trim(),
+            email: email?.trim(),
+            mobile: phone?.trim(),
+            address: address?.trim(),
+            active: 1
+          }, idempotencyKey);
+          
+          serviceM8Uuid = serviceM8Customer.uuid;
         } else {
+          // Fallback to mock UUID for development
           serviceM8Uuid = `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         }
       } catch (error) {
         console.error('ServiceM8 customer creation failed:', error);
-        await logSupabaseCall("/api/admin/customers", "POST", { name, email, phone }, { error: "Failed to create customer in ServiceM8" }, 502, Date.now() - startedAt, user.id, ip, userAgent, (error as Error).message);
+        await logSupabaseCall("/api/admin/customers", "POST", { name, email, phone }, { error: "Failed to create customer in ServiceM8", details: (error as Error).message }, 502, Date.now() - startedAt, user.id, ip, userAgent, (error as Error).message);
         return NextResponse.json({ error: "Failed to create customer in ServiceM8" }, { status: 502 });
       }
     }

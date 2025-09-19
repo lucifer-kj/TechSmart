@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingCard } from "@/components/ui/loading";
+import { useRouter } from "next/navigation";
 
 type AdminStats = {
   totalCustomers: number;
@@ -29,6 +30,7 @@ export default function AdminDashboardPage() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
 
   useEffect(() => {
@@ -60,6 +62,26 @@ export default function AdminDashboardPage() {
       case 'payment_received': return '💰';
       case 'feedback_submitted': return '💬';
       default: return '📋';
+    }
+  };
+
+  const handleQuickAction = (action: string) => {
+    switch (action) {
+      case 'customers':
+        router.push('/admin/customers');
+        break;
+      case 'jobs':
+        router.push('/admin/jobs');
+        break;
+      case 'reports':
+        router.push('/admin/reports');
+        break;
+      case 'settings':
+        router.push('/admin/settings');
+        break;
+      case 'create-customer':
+        router.push('/admin/customers/new');
+        break;
     }
   };
 
@@ -100,11 +122,18 @@ export default function AdminDashboardPage() {
           </p>
         </div>
         <div className="mt-4 sm:mt-0 flex gap-2">
-          <Button variant="outline" size="sm">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => handleQuickAction('reports')}
+          >
             📊 Export Report
           </Button>
-          <Button variant="outline" size="sm">
-            ⚙️ System Settings
+          <Button 
+            onClick={() => handleQuickAction('create-customer')}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            + New Customer
           </Button>
         </div>
       </div>
@@ -179,19 +208,35 @@ export default function AdminDashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Button variant="outline" className="h-20 flex flex-col gap-2">
-              <span className="text-2xl">👤</span>
+            <Button 
+              variant="outline" 
+              className="h-20 flex flex-col gap-2 hover:bg-blue-50 hover:border-blue-200 dark:hover:bg-blue-900/20"
+              onClick={() => handleQuickAction('customers')}
+            >
+              <span className="text-2xl">👥</span>
               <span>Manage Customers</span>
             </Button>
-            <Button variant="outline" className="h-20 flex flex-col gap-2">
+            <Button 
+              variant="outline" 
+              className="h-20 flex flex-col gap-2 hover:bg-green-50 hover:border-green-200 dark:hover:bg-green-900/20"
+              onClick={() => handleQuickAction('jobs')}
+            >
               <span className="text-2xl">🔧</span>
               <span>View All Jobs</span>
             </Button>
-            <Button variant="outline" className="h-20 flex flex-col gap-2">
+            <Button 
+              variant="outline" 
+              className="h-20 flex flex-col gap-2 hover:bg-purple-50 hover:border-purple-200 dark:hover:bg-purple-900/20"
+              onClick={() => handleQuickAction('reports')}
+            >
               <span className="text-2xl">📊</span>
               <span>Generate Reports</span>
             </Button>
-            <Button variant="outline" className="h-20 flex flex-col gap-2">
+            <Button 
+              variant="outline" 
+              className="h-20 flex flex-col gap-2 hover:bg-gray-50 hover:border-gray-200 dark:hover:bg-gray-800"
+              onClick={() => handleQuickAction('settings')}
+            >
               <span className="text-2xl">⚙️</span>
               <span>System Settings</span>
             </Button>

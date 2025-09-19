@@ -174,13 +174,40 @@ export default function DashboardPage() {
         <Card className="border-red-200 bg-red-50 dark:bg-red-900/20">
           <CardContent className="pt-6">
             <div className="text-center">
-              <p className="text-red-600 dark:text-red-400 font-medium">{err}</p>
-              <Button 
-                className="mt-4" 
-                onClick={() => window.location.reload()}
-              >
-                Try Again
-              </Button>
+              <div className="mb-4">
+                <div className="text-red-600 dark:text-red-400 text-6xl mb-2">⚠️</div>
+                <h2 className="text-xl font-semibold text-red-800 dark:text-red-200 mb-2">
+                  Unable to Load Dashboard
+                </h2>
+                <p className="text-red-600 dark:text-red-400 font-medium mb-4">{err}</p>
+              </div>
+              
+              <div className="space-y-3">
+                <Button 
+                  className="w-full" 
+                  onClick={() => window.location.reload()}
+                >
+                  🔄 Try Again
+                </Button>
+                
+                <div className="text-sm text-red-500 dark:text-red-400">
+                  <p className="mb-2">If the problem persists:</p>
+                  <ul className="text-left space-y-1">
+                    <li>• Check your internet connection</li>
+                    <li>• Verify you&apos;re signed in correctly</li>
+                    <li>• Contact support if the issue continues</li>
+                  </ul>
+                </div>
+                
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => window.location.href = '/profile'}
+                  className="text-xs"
+                >
+                  View Profile Settings
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

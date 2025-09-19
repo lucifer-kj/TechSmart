@@ -43,7 +43,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const supabase = createBrowserSupabase();
 
-  // Fetch user profile
+  // Fetch user profile with graceful error handling
   const fetchUserProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
     try {
       const { data, error } = await supabase
@@ -54,6 +54,38 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (error) {
         console.error('Error fetching user profile:', error);
+        
+        // In development mode, create a default profile if none exists
+        if (process.env.NODE_ENV === 'development' && error.code === 'PGRST116') {
+          console.log('Creating default profile for development...');
+          try {
+            const { data: userData } = await supabase.auth.getUser();
+            if (userData.user) {
+              const defaultProfile = {
+                id: userId,
+                email: userData.user.email || 'demo@example.com',
+                full_name: userData.user.user_metadata?.full_name || 'Demo User',
+                role: 'customer' as 'admin' | 'customer',
+                customer_id: null,
+                is_active: true,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              };
+              
+              // Try to insert the default profile
+              const { error: insertError } = await supabase
+                .from('user_profiles')
+                .insert(defaultProfile);
+              
+              if (!insertError) {
+                return defaultProfile as UserProfile;
+              }
+            }
+          } catch (createError) {
+            console.error('Error creating default profile:', createError);
+          }
+        }
+        
         return null;
       }
 

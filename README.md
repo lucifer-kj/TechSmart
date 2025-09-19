@@ -64,33 +64,77 @@ A secure, self-service customer portal for ServiceM8 users to view job status, a
 ## Getting Started
 
 ### Prerequisites
-- Node 18+
-- ServiceM8 API key
-- Supabase project (anon key + URL)
+- Node.js 18+ and npm
+- A Supabase account and project
+- A ServiceM8 account with API access (optional for development)
 
-### Environment variables
-- `SERVICEM8_API_KEY` – live data; if omitted, API serves safe mock data so the UI works
-- `SERVICEM8_CUSTOMER_UUID` – default customer/company UUID to scope jobs for the portal
-- `SERVICEM8_WEBHOOK_SECRET` (optional, recommended in production)
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
- 
+### Quick Setup
 
-Notes:
-- If `SERVICEM8_API_KEY` is not set, `GET /api/servicem8/jobs` returns mock jobs to keep the dashboard functional for demos and development.
-- You can override the company on any request with `?customerId=UUID`.
+1. **Clone and install dependencies:**
+   ```bash
+   git clone <repository-url>
+   cd servicem8
+   npm install
+   ```
 
-### Install & run
-```bash
-npm install
-npm run dev
-# build: npm run build
-# start: npm run start
-```
+2. **Set up environment variables:**
+   ```bash
+   cp env.example .env.local
+   # Edit .env.local with your actual values
+   ```
 
-### Quick verification
-- Open `/dashboard` and confirm cards populate.
-- Visit `/api/servicem8/jobs` to see JSON output. Use `?customerId=YOUR_COMPANY_UUID` to test another customer.
+3. **Check your environment setup:**
+   ```bash
+   npm run check-env
+   ```
+
+4. **Seed development data (optional):**
+   ```bash
+   npm run seed
+   ```
+
+5. **Start the development server:**
+   ```bash
+   npm run dev
+   ```
+
+The application will be available at `http://localhost:3000`
+
+### Environment Variables
+
+**Required:**
+- `NEXT_PUBLIC_SUPABASE_URL` – Your Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` – Supabase anonymous key
+- `SUPABASE_SERVICE_ROLE_KEY` – Supabase service role key
+
+**Optional (for development):**
+- `SERVICEM8_API_KEY` – ServiceM8 API key (if omitted, uses mock data)
+- `SERVICEM8_CUSTOMER_UUID` – Default customer UUID (defaults to "company-123")
+- `SERVICEM8_WEBHOOK_SECRET` – Webhook secret for production
+
+**Development Features:**
+- If `SERVICEM8_API_KEY` is not set, the application automatically uses mock data
+- Authentication failures fall back to mock data in development mode
+- Missing user profiles are automatically created in development
+
+### Quick Verification
+
+1. **Check environment setup:**
+   ```bash
+   npm run check-env
+   ```
+
+2. **Test the dashboard:**
+   - Navigate to `http://localhost:3000/dashboard`
+   - You should see the dashboard with mock data
+
+3. **Test API endpoints:**
+   - Visit `http://localhost:3000/api/servicem8/jobs` to see JSON output
+   - Use `?customerId=YOUR_COMPANY_UUID` to test with different customers
+
+### Detailed Setup
+
+For comprehensive setup instructions, including database configuration, authentication setup, and troubleshooting, see [docs/SETUP.md](docs/SETUP.md).
 
 ---
 
