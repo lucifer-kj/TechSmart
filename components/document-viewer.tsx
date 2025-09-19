@@ -80,19 +80,19 @@ export function DocumentViewer({
     onDownload(document.uuid);
   };
 
-  const handleAcknowledge = async (data: {
-    documentId: string;
-    signature: string;
-    notes?: string;
-    acknowledgedBy: string;
-  }): Promise<boolean> => {
+  const handleAcknowledge = async (documentId: string, signature: string, notes?: string): Promise<boolean> => {
     try {
-      const response = await fetch(`/api/customer-portal/documents/${data.documentId}/acknowledge`, {
+      const response = await fetch(`/api/customer-portal/documents/${documentId}/acknowledge`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          documentId,
+          signature,
+          notes: notes || '',
+          acknowledgedBy: 'Customer', // This should come from user context
+        }),
       });
 
       if (!response.ok) {

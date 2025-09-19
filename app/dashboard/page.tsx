@@ -11,6 +11,8 @@ import { useRealtime } from "@/hooks/useRealtime";
 import { RealtimeStatusIndicator } from "@/components/realtime-status-indicator";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationPermission } from "@/components/notifications/notification-permission";
+// import { ErrorDisplay } from "@/components/ui/error-display"; // Unused for now
+import { handleAsyncOperation } from "@/lib/error-handling";
 
 type Job = {
   uuid: string;
@@ -76,16 +78,25 @@ export default function DashboardPage() {
     }
 
     (async () => {
+      setLoading(true);
+      setErr(null);
+      
       try {
-        setLoading(true);
-        const res = await fetch("/api/customer-portal/jobs", { cache: "no-store" });
-        if (!res.ok) throw new Error("Failed to load jobs");
-        const data = await res.json();
-        setJobs(data.jobs || []);
-        setStats(calculateStats(data.jobs || []));
-        setErr(null);
-      } catch (e: unknown) {
-        setErr((e as Error).message || "Error loading jobs");
+        await handleAsyncOperation(async () => {
+          // Use dedicated dashboard API for stats and recent jobs
+          const dashboardRes = await fetch("/api/customer-portal/dashboard", { cache: "no-store" });
+          const dashboardData = await dashboardRes.json();
+          
+          // Use jobs API for complete job list (for filtering and display)
+          const jobsRes = await fetch("/api/customer-portal/jobs", { cache: "no-store" });
+          const jobsData = await jobsRes.json();
+          
+          setJobs(jobsData.jobs || []);
+          // Use server-calculated stats from dashboard API, fallback to client calculation
+          setStats(dashboardData || calculateStats(jobsData.jobs || []));
+        }, "Loading dashboard data");
+      } catch (error) {
+        setErr(error instanceof Error ? error.message : 'Unknown error');
       } finally {
         setLoading(false);
       }

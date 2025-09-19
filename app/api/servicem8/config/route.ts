@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceM8Config, validateServiceM8ApiKey } from "@/lib/servicem8-config";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const config = await getServiceM8Config();
     

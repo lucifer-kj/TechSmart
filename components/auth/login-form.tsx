@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
@@ -15,8 +15,7 @@ export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
 
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirectTo") || "/dashboard";
+  // Note: searchParams available but redirectTo not used as middleware handles routing
   const { signIn, loading } = useAuth();
   const supabase = createClient();
 

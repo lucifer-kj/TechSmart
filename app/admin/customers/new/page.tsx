@@ -73,9 +73,10 @@ export default function NewCustomerPage() {
               </h4>
               <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
                 <li>• Customer record created in Supabase</li>
+                <li>• <strong>All existing jobs & data synced from ServiceM8</strong></li>
                 <li>• Portal access credentials generated</li>
                 <li>• Welcome email sent (if configured)</li>
-                <li>• Customer can access portal immediately</li>
+                <li>• Customer can access portal with full data</li>
               </ul>
             </div>
 
@@ -84,9 +85,10 @@ export default function NewCustomerPage() {
                 Tips
               </h4>
               <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                <li>• Use existing ServiceM8 UUID for existing customers</li>
+                <li>• Use existing ServiceM8 UUID to auto-sync all data</li>
+                <li>• System validates UUID exists in ServiceM8</li>
+                <li>• All jobs, documents & history imported automatically</li>
                 <li>• Generate temporary password for first login</li>
-                <li>• Customer will be prompted to change password</li>
               </ul>
             </div>
           </CardContent>

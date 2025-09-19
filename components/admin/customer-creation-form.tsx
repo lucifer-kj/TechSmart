@@ -116,6 +116,14 @@ export function CustomerCreationForm({ onCustomerCreated, onError, onLoading }: 
       }
 
       const data = await response.json();
+      
+      // Show sync result if available
+      if (data.syncResult) {
+        console.log('✅ Sync completed:', data.syncResult.message);
+        // You could show a toast notification here
+        alert(`Customer created successfully! ${data.syncResult.message}`);
+      }
+      
       onCustomerCreated(data.customer.id);
     } catch (error) {
       console.error('Customer creation error:', error);

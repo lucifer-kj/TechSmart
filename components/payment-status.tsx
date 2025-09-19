@@ -4,6 +4,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+import { LoadingSpinner } from './ui/loading';
 
 interface Payment {
   jobNumber: string;
@@ -18,9 +19,11 @@ interface PaymentStatusProps {
   payments: Payment[];
   onPayNow?: (paymentId: string) => void;
   onViewInvoice?: (paymentId: string) => void;
+  processingPayment?: string | null;
+  loadingInvoice?: string | null;
 }
 
-export function PaymentStatus({ payments, onPayNow, onViewInvoice }: PaymentStatusProps) {
+export function PaymentStatus({ payments, onPayNow, onViewInvoice, processingPayment, loadingInvoice: _loadingInvoice }: PaymentStatusProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-AU', {
       style: 'currency',
@@ -188,9 +191,17 @@ export function PaymentStatus({ payments, onPayNow, onViewInvoice }: PaymentStat
                         <Button
                           size="sm"
                           onClick={() => onPayNow(payment.jobNumber)}
+                          disabled={processingPayment === payment.jobNumber}
                           className={payment.status === 'Overdue' ? 'bg-red-600 hover:bg-red-700' : ''}
                         >
-                          Pay Now
+                          {processingPayment === payment.jobNumber ? (
+                            <>
+                              <LoadingSpinner size="sm" className="mr-2" />
+                              Processing...
+                            </>
+                          ) : (
+                            'Pay Now'
+                          )}
                         </Button>
                       )}
                     </div>

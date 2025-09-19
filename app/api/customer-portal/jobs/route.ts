@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { customerPortalAPI } from "@/lib/customer-portal-api";
 import { createClient } from "@supabase/supabase-js";
 import { SyncService } from "@/lib/sync-service";
-import { ServiceM8Client, getJobsForCustomer } from "@/lib/servicem8";
+import { getJobsForCustomer } from "@/lib/servicem8";
 
 export async function GET(request: NextRequest) {
   // Development mode bypass for testing

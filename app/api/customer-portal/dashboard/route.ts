@@ -9,7 +9,7 @@ export async function GET() {
   // If in development mode and no API key, return mock data
   if (isDevelopment && !process.env.SERVICEM8_API_KEY) {
     try {
-      const companyUuid = process.env.SERVICEM8_CUSTOMER_UUID || "company-123";
+      // Using mock data for development
       const mockDashboardData = {
         totalJobs: 8,
         activeJobs: 3,
@@ -49,7 +49,7 @@ export async function GET() {
     // Fallback to mock data if auth fails in development
     if (isDevelopment) {
       try {
-        const companyUuid = process.env.SERVICEM8_CUSTOMER_UUID || "company-123";
+        // Using mock data for development
         const mockDashboardData = {
           totalJobs: 8,
           activeJobs: 3,
@@ -81,7 +81,7 @@ export async function GET() {
     // Final fallback to mock data in development
     if (isDevelopment) {
       try {
-        const companyUuid = process.env.SERVICEM8_CUSTOMER_UUID || "company-123";
+        // Using mock data for development
         const mockDashboardData = {
           totalJobs: 8,
           activeJobs: 3,

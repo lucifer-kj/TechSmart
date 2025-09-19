@@ -67,12 +67,60 @@ export default function PaymentsPage() {
     setRtStatus(status);
   }, [status]);
 
-  const handlePayNow = (paymentId: string) => {
-    console.log('Pay now for:', paymentId);
+  const [processingPayment, setProcessingPayment] = useState<string | null>(null);
+
+  const handlePayNow = async (paymentId: string) => {
+    setProcessingPayment(paymentId);
+    try {
+      // For now, redirect to external payment processor
+      // In a real implementation, this would integrate with payment gateway
+      const payment = payments.find(p => p.id === paymentId);
+      if (!payment) {
+        setErr('Payment not found');
+        return;
+      }
+      
+      // Create payment intent or redirect to payment processor
+      const response = await fetch(`/api/customer-portal/payments/${paymentId}/create-payment-intent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: payment.amount })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to create payment intent');
+      }
+      
+      const { paymentUrl } = await response.json();
+      
+      // Redirect to payment processor
+      window.open(paymentUrl, '_blank');
+      
+    } catch (error) {
+      console.error('Payment error:', error);
+      setErr('Failed to process payment. Please try again.');
+    } finally {
+      setProcessingPayment(null);
+    }
   };
 
-  const handleViewInvoice = (paymentId: string) => {
-    console.log('View invoice for:', paymentId);
+  const handleViewInvoice = async (paymentId: string) => {
+    try {
+      // Find related documents for this payment
+      const payment = payments.find(p => p.id === paymentId);
+      if (!payment) {
+        setErr('Payment not found');
+        return;
+      }
+      
+      // Open invoice document in new tab
+      const invoiceUrl = `/api/servicem8/attachments/invoice-${paymentId}`;
+      window.open(invoiceUrl, '_blank');
+      
+    } catch (error) {
+      console.error('Invoice view error:', error);
+      setErr('Failed to open invoice. Please try again.');
+    }
   };
 
   // Fetch of payment status history is done inside detail views when needed.
@@ -139,6 +187,7 @@ export default function PaymentsPage() {
           payments={payments}
           onPayNow={handlePayNow}
           onViewInvoice={handleViewInvoice}
+          processingPayment={processingPayment}
         />
       )}
     </div>

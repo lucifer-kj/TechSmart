@@ -4,6 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 import { InputSanitizationService, type SanitizationConfig } from "@/lib/input-sanitization";
 import { logSupabaseCall } from "@/lib/api-logging";
 import { logCustomerCreation } from "@/lib/audit-logging";
+import { SyncService } from "@/lib/sync-service";
+import { ServiceM8Client } from "@/lib/servicem8";
 
 type LinkCustomerRequest = {
   client_uuid: string;
@@ -88,6 +90,59 @@ export async function POST(request: NextRequest) {
 
     if (customerError) throw customerError;
 
+    // Validate that the ServiceM8 client exists and fetch basic info
+    const apiKey = process.env.SERVICEM8_API_KEY;
+    let clientExists = false;
+    let syncResult = null;
+    
+    if (apiKey) {
+      try {
+        const sm8Client = new ServiceM8Client(apiKey);
+        
+        // Verify client exists in ServiceM8
+        const clientData = await sm8Client.getCompany(body.client_uuid);
+        clientExists = true;
+        
+        // Update customer record with ServiceM8 data if not provided
+        if (!name || !email || !phone || !address) {
+          const { error: updateError } = await supabase
+            .from('customers')
+            .update({
+              name: name || clientData.name,
+              email: email || clientData.email || null,
+              phone: phone || clientData.mobile || null,
+              address: address || clientData.address || null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', customer.id);
+          
+          if (updateError) {
+            console.warn('Failed to update customer with ServiceM8 data:', updateError);
+          }
+        }
+        
+        // Trigger automatic data sync for existing client
+        const syncService = new SyncService(apiKey);
+        syncResult = await syncService.syncCustomerData(body.client_uuid);
+        
+        console.log(`✅ Auto-synced ${syncResult.jobCount} jobs for existing ServiceM8 client ${body.client_uuid}`);
+        
+      } catch (error) {
+        console.error('❌ ServiceM8 client validation/sync failed:', error);
+        
+        // If client doesn't exist in ServiceM8, return error
+        if (error instanceof Error && error.message.includes('404')) {
+          await logSupabaseCall("/api/admin/customers/link", "POST", body, { error: "ServiceM8 client not found" }, 404, Date.now() - startedAt, user.id, ip, userAgent, "servicem8_client_not_found");
+          return NextResponse.json({ error: "ServiceM8 client not found with the provided UUID" }, { status: 404 });
+        }
+        
+        // For other errors, log but don't fail the operation
+        console.warn('ServiceM8 sync failed, but continuing with customer creation');
+      }
+    } else {
+      console.warn('ServiceM8 API key not configured, skipping validation and sync');
+    }
+
     // Optional: create portal access profile
     if (body.createPortalAccess) {
       const { error: profileError } = await supabase
@@ -105,7 +160,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const responsePayload = { customer };
+    const responsePayload = { 
+      customer,
+      syncResult: syncResult ? {
+        jobsSynced: syncResult.jobCount,
+        clientExists,
+        message: `Successfully synced ${syncResult.jobCount} jobs from ServiceM8`
+      } : null
+    };
+    
     await logSupabaseCall("/api/admin/customers/link", "POST", { client_uuid: body.client_uuid }, responsePayload, 200, Date.now() - startedAt, user.id, ip, userAgent);
     await logCustomerCreation(user.id, String(customer.id), { name, email, phone, servicem8_uuid: body.client_uuid }, ip, userAgent);
 

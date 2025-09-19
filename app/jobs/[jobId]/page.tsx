@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { LoadingCard } from "@/components/ui/loading";
 import { LiveDocumentViewer } from "@/components/documents/live-document-viewer";
 import { DocumentAnnotations } from "@/components/documents/document-annotations";
+import { DocumentAcknowledgment } from "@/components/document-acknowledgment";
 import { QuoteApprovalForm } from "@/components/quote-approval-form";
 import { CustomerFeedback } from "@/components/customer-feedback";
+import { useAuth } from "@/hooks/useAuth";
 
 type JobMaterial = {
   uuid: string;
@@ -40,6 +42,7 @@ interface PageProps {
 
 export default function JobDetailPage(props: PageProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [job, setJob] = useState<JobDetails | null>(null);
@@ -56,6 +59,7 @@ export default function JobDetailPage(props: PageProps) {
     category: 'quote' | 'invoice' | 'photo' | 'document';
   }[]>([]);
   const [approving, setApproving] = useState(false);
+  const [acknowledging, setAcknowledging] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -126,6 +130,35 @@ export default function JobDetailPage(props: PageProps) {
     } catch (error) {
       console.error('Feedback submission error:', error);
       return false;
+    }
+  };
+
+  const handleAcknowledgeDocument = async (documentId: string, signature: string, notes?: string) => {
+    setAcknowledging(documentId);
+    try {
+      const response = await fetch(`/api/customer-portal/documents/${documentId}/acknowledge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          signature,
+          notes: notes || '',
+          acknowledgedBy: user?.email || 'Unknown',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to acknowledge document');
+      }
+
+      // Refresh the page to show updated acknowledgment status
+      router.refresh();
+    } catch (error) {
+      console.error('Document acknowledgment error:', error);
+      setError('Failed to acknowledge document. Please try again.');
+    } finally {
+      setAcknowledging(null);
     }
   };
 
@@ -206,7 +239,15 @@ export default function JobDetailPage(props: PageProps) {
             onDownload={handleDownload}
           />
           {documents.map((d) => (
-            <DocumentAnnotations key={d.uuid} documentId={d.uuid} />
+            <div key={d.uuid} className="space-y-4">
+              <DocumentAcknowledgment
+                documentId={d.uuid}
+                documentName={d.file_name}
+                onAcknowledge={handleAcknowledgeDocument}
+                isLoading={acknowledging === d.uuid}
+              />
+              <DocumentAnnotations documentId={d.uuid} />
+            </div>
           ))}
         </CardContent>
       </Card>
