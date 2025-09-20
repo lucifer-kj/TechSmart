@@ -146,7 +146,7 @@ export async function POST(
   try {
     const { customerId } = await params;
     const body = await request.json();
-    const { createPortalAccess, generateCredentials } = body;
+    const { createPortalAccess } = body;
 
     if (!createPortalAccess) {
       return NextResponse.json({ 
@@ -191,64 +191,36 @@ export async function POST(
     let tempPassword: string | null = null;
     let authUser = null;
 
-    // Always generate credentials and create auth user for proper user access
-    if (generateCredentials) {
-      // Generate temporary password
-      tempPassword = generateSecurePassword();
+    // Always create auth user for proper portal access (default behavior)
+    // Generate temporary password
+    tempPassword = generateSecurePassword();
 
-      // Create Supabase Auth user
-      try {
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-          email: customer.email,
-          password: tempPassword,
-          email_confirm: true,
-          user_metadata: {
-            full_name: customer.name,
-            customer_id: customerId,
-            role: 'customer'
-          }
-        });
-
-        if (authError) {
-          console.error('Auth user creation error:', authError);
-          return NextResponse.json({ 
-            error: `Failed to create authentication account: ${authError.message}` 
-          }, { status: 500 });
+    // Create Supabase Auth user
+    try {
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: customer.email,
+        password: tempPassword,
+        email_confirm: true,
+        user_metadata: {
+          full_name: customer.name,
+          customer_id: customerId,
+          role: 'customer'
         }
-        
-        authUser = authData.user;
-      } catch (authError) {
+      });
+
+      if (authError) {
         console.error('Auth user creation error:', authError);
         return NextResponse.json({ 
-          error: 'Failed to create authentication account' 
+          error: `Failed to create authentication account: ${authError.message}` 
         }, { status: 500 });
       }
-    } else {
-      // If not generating credentials, we still need to create a profile without auth user
-      // This is for cases where credentials are managed separately
-      const { error: profileError } = await supabase
-        .from('user_profiles')
-        .insert({
-          customer_id: customerId,
-          email: customer.email,
-          full_name: customer.name,
-          role: 'customer',
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
-
-      if (profileError) {
-        console.error('Profile creation error:', profileError);
-        return NextResponse.json({ 
-          error: `Failed to create user profile: ${profileError.message}` 
-        }, { status: 500 });
-      }
-
+      
+      authUser = authData.user;
+    } catch (authError) {
+      console.error('Auth user creation error:', authError);
       return NextResponse.json({ 
-        message: 'User access created successfully (no credentials generated)',
-        has_portal_access: true
-      });
+        error: 'Failed to create authentication account' 
+      }, { status: 500 });
     }
 
     // Create user profile with auth user ID
@@ -283,15 +255,20 @@ export async function POST(
     const response: {
       message: string;
       has_portal_access: boolean;
-      tempPassword?: string;
+      tempPassword: string;
+      login_instructions: {
+        email: string;
+        password: string;
+      };
     } = { 
       message: 'User access created successfully',
-      has_portal_access: true
+      has_portal_access: true,
+      tempPassword: tempPassword!,
+      login_instructions: {
+        email: customer.email,
+        password: tempPassword!
+      }
     };
-
-    if (tempPassword) {
-      response.tempPassword = tempPassword;
-    }
 
     return NextResponse.json(response);
   } catch (error) {

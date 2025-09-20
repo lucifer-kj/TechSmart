@@ -358,13 +358,9 @@ export async function POST(request: NextRequest) {
     };
 
     const {
-      servicem8_customer_uuid,
-      createPortalAccess,
-      generateCredentials
+      servicem8_customer_uuid
     } = {
-      servicem8_customer_uuid: (flags.servicem8_customer_uuid as string | undefined) ?? undefined,
-      createPortalAccess: Boolean(flags.createPortalAccess),
-      generateCredentials: Boolean(flags.generateCredentials)
+      servicem8_customer_uuid: (flags.servicem8_customer_uuid as string | undefined) ?? undefined
     };
 
     // Note: sendWelcomeEmail flag is available for future email functionality
@@ -445,21 +441,19 @@ export async function POST(request: NextRequest) {
 
     if (customerError) throw customerError;
 
-    // Create portal access if requested
+    // Always create portal access when email is provided (default behavior)
     let tempPassword: string | null = null;
     let authUserId: string | null = null;
     
-    if (createPortalAccess && email) {
+    if (email) {
       try {
-        if (generateCredentials) {
-          // Generate secure temporary password
-          tempPassword = generateSecurePassword();
-        }
+        // Always generate secure temporary password by default
+        tempPassword = generateSecurePassword();
 
         // Create Supabase Auth user
         const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
           email: email,
-          password: tempPassword || generateSecurePassword(),
+          password: tempPassword,
           email_confirm: true, // Auto-confirm email for admin-created users
           user_metadata: {
             name: name,
@@ -511,7 +505,7 @@ export async function POST(request: NextRequest) {
     const responsePayload = { 
       customer: {
         ...customer,
-        tempPassword: createPortalAccess && generateCredentials ? tempPassword : undefined,
+        tempPassword: authUserId ? tempPassword : undefined,
         servicem8_data: serviceM8CustomerData,
         auth_user_id: authUserId,
         portal_access_created: !!authUserId,
