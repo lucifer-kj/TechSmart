@@ -8,38 +8,43 @@ import { Badge } from "@/components/ui/badge";
 import { LoadingCard } from "@/components/ui/loading";
 import Link from "next/link";
 
-type AdminJob = {
+type AdminPayment = {
   id: string;
-  job_no: string;
-  description: string;
-  status: string;
-  generated_job_total: number;
+  job_id: string;
+  job_number: string;
+  job_description: string;
+  amount: number;
+  currency: string;
+  status: 'pending' | 'paid' | 'overdue';
+  reference: string;
+  due_date: string;
+  paid_date?: string;
   created_at: string;
   updated_at: string;
   customer_id: string;
   customer_name: string;
-  customer_email?: string;
+  customer_email: string;
 };
 
-type JobFilters = {
+type PaymentFilters = {
   status: string;
   customer: string;
   dateRange: string;
-  sortBy: 'date' | 'total' | 'customer';
+  sortBy: 'date' | 'amount' | 'customer' | 'due_date';
 };
 
-export default function AdminJobsPage() {
-  const [jobs, setJobs] = useState<AdminJob[]>([]);
+export default function AdminPaymentsPage() {
+  const [payments, setPayments] = useState<AdminPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<JobFilters>({
+  const [filters, setFilters] = useState<PaymentFilters>({
     status: '',
     customer: '',
     dateRange: '',
     sortBy: 'date'
   });
 
-  const loadJobs = useCallback(async (forceSync = false) => {
+  const loadPayments = useCallback(async (forceSync = false) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -53,13 +58,13 @@ export default function AdminJobsPage() {
         params.append('sync', 'true');
       }
 
-      console.log('📡 Loading jobs with params:', params.toString());
-      const response = await fetch(`/api/admin/jobs?${params.toString()}`, { cache: "no-store" });
-      if (!response.ok) throw new Error("Failed to load jobs");
+      console.log('📡 Loading payments with params:', params.toString());
+      const response = await fetch(`/api/admin/payments?${params.toString()}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Failed to load payments");
       const data = await response.json();
       
-      console.log('📊 Jobs API Response:', data);
-      setJobs(data.jobs || []);
+      console.log('📊 Payments API Response:', data);
+      setPayments(data.payments || []);
       
       // Log ServiceM8 status for debugging
       if (data.servicem8_status) {
@@ -69,8 +74,8 @@ export default function AdminJobsPage() {
         }
       }
     } catch (e: unknown) {
-      setError((e as Error).message || "Error loading jobs");
-      console.error('❌ Load jobs error:', e);
+      setError((e as Error).message || "Error loading payments");
+      console.error('❌ Load payments error:', e);
     } finally {
       setLoading(false);
     }
@@ -78,23 +83,18 @@ export default function AdminJobsPage() {
 
   useEffect(() => {
     const isFirstLoad = true;
-    loadJobs(isFirstLoad);
-  }, [loadJobs]); // ✅ react-hooks/exhaustive-deps resolved
+    loadPayments(isFirstLoad);
+  }, [loadPayments]); // ✅ react-hooks/exhaustive-deps resolved
 
-  // Realtime: update list on job inserts/updates/deletes
-  useRealtime<AdminJob>({ table: 'jobs' }, ({ eventType, new: newRow, old }) => {
-    setJobs(prev => {
-      if (eventType === 'INSERT' && newRow) {
-        return [newRow as AdminJob, ...prev];
+  // Realtime: update list on job updates that affect payments
+  useRealtime<AdminPayment>({ table: 'jobs' }, ({ eventType, new: newRow }) => {
+    // Only update if the job status affects payments (Invoice/Complete)
+    if (eventType === 'UPDATE' && newRow) {
+      const job = newRow as { status: string };
+      if (['Invoice', 'Complete'].includes(job.status)) {
+        loadPayments(false); // Refresh payments when job status changes
       }
-      if (eventType === 'UPDATE' && newRow) {
-        return prev.map(j => j.id === (newRow as AdminJob).id ? (newRow as AdminJob) : j);
-      }
-      if (eventType === 'DELETE' && old) {
-        return prev.filter(j => j.id !== (old as AdminJob).id);
-      }
-      return prev;
-    });
+    }
   });
 
   const formatCurrency = (amount: number) => {
@@ -108,52 +108,62 @@ export default function AdminJobsPage() {
     return new Date(dateString).toLocaleDateString('en-AU', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      day: 'numeric'
     });
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'complete':
-        return <Badge variant="success" className="bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">Complete</Badge>;
-      case 'invoice':
-        return <Badge variant="warning" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100">Invoice</Badge>;
-      case 'work order':
-        return <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100">Work Order</Badge>;
-      case 'quote':
-        return <Badge variant="outline" className="bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100">Quote</Badge>;
-      case 'cancelled':
-        return <Badge variant="destructive" className="bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100">Cancelled</Badge>;
+  const getStatusBadge = (status: string, dueDate?: string) => {
+    switch (status) {
+      case 'paid':
+        return <Badge variant="success" className="bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">Paid</Badge>;
+      case 'overdue':
+        return <Badge variant="destructive" className="bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100">Overdue</Badge>;
+      case 'pending':
+        // Check if due soon (within 7 days)
+        if (dueDate) {
+          const due = new Date(dueDate);
+          const sevenDaysFromNow = new Date();
+          sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+          if (due <= sevenDaysFromNow) {
+            return <Badge variant="warning" className="bg-orange-100 text-orange-800 dark:bg-orange-800 dark:text-orange-100">Due Soon</Badge>;
+          }
+        }
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100">Pending</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
   };
 
-  const filteredJobs = jobs.filter(job => {
-    const matchesStatus = !filters.status || job.status.toLowerCase() === filters.status.toLowerCase();
+  const filteredPayments = payments.filter(payment => {
+    const matchesStatus = !filters.status || payment.status === filters.status;
     const matchesCustomer = !filters.customer || 
-      job.customer_name.toLowerCase().includes(filters.customer.toLowerCase()) ||
-      job.customer_email?.toLowerCase().includes(filters.customer.toLowerCase());
+      payment.customer_name.toLowerCase().includes(filters.customer.toLowerCase()) ||
+      payment.customer_email.toLowerCase().includes(filters.customer.toLowerCase());
     
     return matchesStatus && matchesCustomer;
   });
 
-  const sortedJobs = filteredJobs.sort((a, b) => {
+  const sortedPayments = filteredPayments.sort((a, b) => {
     switch (filters.sortBy) {
-      case 'total':
-        return (b.generated_job_total || 0) - (a.generated_job_total || 0);
+      case 'amount':
+        return (b.amount || 0) - (a.amount || 0);
       case 'customer':
         return a.customer_name.localeCompare(b.customer_name);
+      case 'due_date':
+        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
       case 'date':
       default:
         return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     }
   });
 
+  const totalAmount = payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+  const paidAmount = payments.filter(p => p.status === 'paid').reduce((sum, payment) => sum + (payment.amount || 0), 0);
+  const pendingAmount = payments.filter(p => p.status === 'pending').reduce((sum, payment) => sum + (payment.amount || 0), 0);
+  const overdueAmount = payments.filter(p => p.status === 'overdue').reduce((sum, payment) => sum + (payment.amount || 0), 0);
+
   if (loading) {
-    return <LoadingCard message="Loading all jobs..." />;
+    return <LoadingCard message="Loading payments..." />;
   }
 
   if (error) {
@@ -165,7 +175,7 @@ export default function AdminJobsPage() {
               <p className="text-red-600 dark:text-red-400 font-medium">{error}</p>
               <Button 
                 className="mt-4" 
-                onClick={() => loadJobs()}
+                onClick={() => loadPayments()}
               >
                 Try Again
               </Button>
@@ -182,20 +192,20 @@ export default function AdminJobsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-            All Jobs
+            Payment Management
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            View and manage jobs across all customers
+            Track and manage customer payments
           </p>
         </div>
         <div className="mt-4 sm:mt-0 flex gap-2">
           <Button variant="outline" size="sm">
-            📊 Export Report
+            📊 Payment Report
           </Button>
           <Button 
             variant="outline" 
             size="sm"
-            onClick={() => loadJobs(false)}
+            onClick={() => loadPayments(false)}
             disabled={loading}
           >
             🔄 Refresh Data
@@ -203,7 +213,7 @@ export default function AdminJobsPage() {
           <Button 
             variant="outline" 
             size="sm"
-            onClick={() => loadJobs(true)}
+            onClick={() => loadPayments(true)}
             disabled={loading}
           >
             🔄 Sync ServiceM8
@@ -216,50 +226,59 @@ export default function AdminJobsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
-              Total Jobs
+              Total Revenue
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{jobs.length}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalAmount)}</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
-              Active Jobs
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              {jobs.filter(j => j.status !== 'Complete' && j.status !== 'Cancelled').length}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
-              Pending Quotes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-              {jobs.filter(j => j.status === 'Quote').length}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
-              Total Value
+              Paid
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-              {formatCurrency(jobs.reduce((sum, job) => sum + (job.generated_job_total || 0), 0))}
+              {formatCurrency(paidAmount)}
             </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {payments.filter(p => p.status === 'paid').length} payments
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+              Pending
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+              {formatCurrency(pendingAmount)}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {payments.filter(p => p.status === 'pending').length} payments
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+              Overdue
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+              {formatCurrency(overdueAmount)}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {payments.filter(p => p.status === 'overdue').length} payments
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -281,11 +300,9 @@ export default function AdminJobsPage() {
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
               >
                 <option value="">All Statuses</option>
-                <option value="Quote">Quote</option>
-                <option value="Work Order">Work Order</option>
-                <option value="Invoice">Invoice</option>
-                <option value="Complete">Complete</option>
-                <option value="Cancelled">Cancelled</option>
+                <option value="pending">Pending</option>
+                <option value="paid">Paid</option>
+                <option value="overdue">Overdue</option>
               </select>
             </div>
 
@@ -325,23 +342,24 @@ export default function AdminJobsPage() {
               </label>
               <select
                 value={filters.sortBy}
-                onChange={(e) => setFilters(prev => ({ ...prev, sortBy: e.target.value as 'date' | 'total' | 'customer' }))}
+                onChange={(e) => setFilters(prev => ({ ...prev, sortBy: e.target.value as 'date' | 'amount' | 'customer' | 'due_date' }))}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
               >
                 <option value="date">Date Updated</option>
-                <option value="total">Total Amount</option>
+                <option value="amount">Amount</option>
                 <option value="customer">Customer Name</option>
+                <option value="due_date">Due Date</option>
               </select>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Jobs Table */}
+      {/* Payments Table */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Jobs ({filteredJobs.length})</CardTitle>
+            <CardTitle>Payments ({filteredPayments.length})</CardTitle>
             <Button 
               variant="outline" 
               size="sm"
@@ -352,39 +370,39 @@ export default function AdminJobsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {sortedJobs.length === 0 ? (
+          {sortedPayments.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-gray-500">No jobs found matching your filters</p>
+              <p className="text-gray-500">No payments found matching your filters</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {sortedJobs.map((job) => (
-                <div key={job.id} className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+              {sortedPayments.map((payment) => (
+                <div key={payment.id} className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                   <div className="flex-1">
                     <div className="flex items-center space-x-3">
                       <Link 
-                        href={`/admin/jobs/${job.id}`}
+                        href={`/admin/jobs/${payment.job_id}`}
                         className="font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                       >
-                        Job #{job.job_no}
+                        Payment #{payment.reference}
                       </Link>
-                      {getStatusBadge(job.status)}
+                      {getStatusBadge(payment.status, payment.due_date)}
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      {job.description || 'No description provided'}
+                      {payment.job_description || 'No description provided'}
                     </p>
                     <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
-                      <span>Customer: {job.customer_name}</span>
-                      <span>Created: {formatDate(job.created_at)}</span>
-                      <span>Updated: {formatDate(job.updated_at)}</span>
+                      <span>Customer: {payment.customer_name}</span>
+                      <span>Due: {formatDate(payment.due_date)}</span>
+                      {payment.paid_date && <span>Paid: {formatDate(payment.paid_date)}</span>}
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="font-semibold text-gray-900 dark:text-gray-100">
-                      {formatCurrency(job.generated_job_total || 0)}
+                      {formatCurrency(payment.amount || 0)}
                     </div>
                     <Link 
-                      href={`/admin/customers/${job.customer_id}`}
+                      href={`/admin/customers/${payment.customer_id}`}
                       className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                     >
                       View Customer

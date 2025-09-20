@@ -32,26 +32,55 @@ export async function GET(request: NextRequest) {
     const customer = searchParams.get('customer');
     const customerId = searchParams.get('customerId');
     const jobId = searchParams.get('jobId');
-    const refresh = searchParams.get('refresh') === 'true';
+    const syncWithServiceM8 = searchParams.get('sync') === 'true';
 
-    if (refresh && (customerId || jobId)) {
-      try {
-        const apiKey = process.env.SERVICEM8_API_KEY;
-        if (apiKey) {
-          const sync = new SyncService(apiKey);
-          if (customerId) {
-            const { data: customerRow } = await supabase
-              .from('customers')
-              .select('servicem8_customer_uuid')
-              .eq('id', customerId)
-              .single();
-            if (customerRow?.servicem8_customer_uuid) {
-              await sync.syncCustomerData(customerRow.servicem8_customer_uuid);
-            }
+    let serviceM8Available = false;
+    let serviceM8Error: string | null = null;
+    
+    // Check if ServiceM8 API key is available
+    if (!process.env.SERVICEM8_API_KEY) {
+      console.log('⚠️ ServiceM8 API key not configured - using local data only');
+      serviceM8Error = 'ServiceM8 API key not configured';
+    } else {
+      serviceM8Available = true;
+      console.log('✅ ServiceM8 API key found - attempting sync if requested');
+      
+      // Sync with ServiceM8 if requested
+      if (syncWithServiceM8) {
+        try {
+          console.log('🔄 Syncing documents from ServiceM8...');
+          
+          // Get all customers with ServiceM8 UUIDs
+          const { data: customersWithUUIDs } = await supabase
+            .from('customers')
+            .select('id, servicem8_customer_uuid')
+            .not('servicem8_customer_uuid', 'is', null);
+          
+          if (customersWithUUIDs && customersWithUUIDs.length > 0) {
+            console.log(`📋 Found ${customersWithUUIDs.length} customers with ServiceM8 UUIDs`);
+            
+            // Sync documents for each customer (limit to prevent timeout)
+            const syncPromises = customersWithUUIDs.slice(0, 10).map(async (customer) => {
+              try {
+                const sync = new SyncService(process.env.SERVICEM8_API_KEY!);
+                await sync.syncCustomerData(customer.servicem8_customer_uuid);
+                console.log(`✅ Synced documents for customer ${customer.id}`);
+              } catch (error) {
+                console.warn(`⚠️ Failed to sync documents for customer ${customer.id}:`, error);
+              }
+            });
+            
+            await Promise.all(syncPromises);
+            console.log('✅ ServiceM8 document sync completed');
+          } else {
+            console.log('⚠️ No customers with ServiceM8 UUIDs found');
           }
+        } catch (error) {
+          console.error('❌ ServiceM8 document sync error:', error);
+          serviceM8Error = error instanceof Error ? error.message : 'Unknown ServiceM8 error';
+          serviceM8Available = false;
+          // Continue with database query even if ServiceM8 fails
         }
-      } catch (e) {
-        console.warn('Admin documents refresh failed:', e);
       }
     }
 
@@ -157,7 +186,17 @@ export async function GET(request: NextRequest) {
       filteredDocuments = filteredDocuments.filter(doc => doc.job_status === status);
     }
 
-    return NextResponse.json({ documents: filteredDocuments });
+    const response = {
+      documents: filteredDocuments,
+      total: filteredDocuments.length,
+      servicem8_status: {
+        available: serviceM8Available,
+        error: serviceM8Error,
+        synced: syncWithServiceM8 && serviceM8Available
+      }
+    };
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error('Admin documents error:', error);
     return NextResponse.json({ error: 'Failed to load documents' }, { status: 500 });

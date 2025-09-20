@@ -117,6 +117,10 @@ export class ServiceM8Error extends Error {
         message = 'Unauthorized - Invalid API key';
         code = 'UNAUTHORIZED';
         break;
+      case 402:
+        message = 'Payment Required - ServiceM8 account billing issue';
+        code = 'PAYMENT_REQUIRED';
+        break;
       case 403:
         message = 'Forbidden - Insufficient permissions';
         code = 'FORBIDDEN';

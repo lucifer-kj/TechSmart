@@ -39,27 +39,45 @@ export default function AdminDocumentsPage() {
     customer: ''
   });
 
-  const loadDocuments = useCallback(async () => {
+  const loadDocuments = useCallback(async (forceSync = false) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (filters.status) params.append('status', filters.status);
       if (filters.documentType) params.append('documentType', filters.documentType);
       if (filters.customer) params.append('customer', filters.customer);
+      
+      // Force sync on first load or manual sync
+      if (forceSync) {
+        params.append('sync', 'true');
+      }
 
+      console.log('📡 Loading documents with params:', params.toString());
       const response = await fetch(`/api/admin/documents?${params.toString()}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Failed to load documents");
       const data = await response.json();
+      
+      console.log('📊 Documents API Response:', data);
       setDocuments(data.documents || []);
+      
+      // Log ServiceM8 status for debugging
+      if (data.servicem8_status) {
+        console.log('📊 ServiceM8 Status:', data.servicem8_status);
+        if (!data.servicem8_status.available) {
+          console.warn('⚠️ ServiceM8 not available:', data.servicem8_status.error);
+        }
+      }
     } catch (e: unknown) {
       setError((e as Error).message || "Error loading documents");
+      console.error('❌ Load documents error:', e);
     } finally {
       setLoading(false);
     }
   }, [filters]);
 
   useEffect(() => {
-    loadDocuments();
+    const isFirstLoad = true;
+    loadDocuments(isFirstLoad);
   }, [loadDocuments]); // ✅ react-hooks/exhaustive-deps resolved
 
   // Realtime: listen to acknowledgment changes which can affect approval lists
@@ -189,26 +207,18 @@ export default function AdminDocumentsPage() {
           <Button 
             variant="outline" 
             size="sm"
-            onClick={async () => {
-              const params = new URLSearchParams();
-              if (filters.status) params.append('status', filters.status);
-              if (filters.documentType) params.append('documentType', filters.documentType);
-              if (filters.customer) params.append('customer', filters.customer);
-              params.append('refresh', 'true');
-              setLoading(true);
-              try {
-                const res = await fetch(`/api/admin/documents?${params.toString()}`, { cache: 'no-store' });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data?.error || 'Refresh failed');
-                setDocuments(data.documents || []);
-              } catch (e) {
-                setError((e as Error).message);
-              } finally {
-                setLoading(false);
-              }
-            }}
+            onClick={() => loadDocuments(false)}
+            disabled={loading}
           >
             🔄 Refresh Data
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => loadDocuments(true)}
+            disabled={loading}
+          >
+            🔄 Sync ServiceM8
           </Button>
         </div>
       </div>

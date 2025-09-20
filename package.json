@@ -15,6 +15,8 @@
     "fix-dev-setup": "tsx scripts/fix-dev-setup.ts",
     "test-client-api": "tsx scripts/test-client-api.ts",
     "setup-servicem8": "tsx scripts/setup-servicem8.ts",
+    "diagnose-servicem8": "tsx scripts/diagnose-servicem8.ts",
+    "setup-env": "tsx scripts/setup-env.ts",
     "check-env": "tsx scripts/check-env.ts",
     "test-servicem8-config": "tsx scripts/test-servicem8-config.ts"
   },
