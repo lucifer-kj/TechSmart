@@ -15,6 +15,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Check if user is admin (skip check in development mode with bypass)
+    if (!(process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true')) {
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+
+      if (!profile || profile.role !== "admin") {
+        return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+      }
+    }
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const customer = searchParams.get('customer');
@@ -24,6 +37,108 @@ export async function GET(request: NextRequest) {
     const syncWithServiceM8 = searchParams.get('sync') === 'true';
 
     console.log('📋 Admin quotes API called with params:', { status, customer, dateRange, fileType, sortBy, syncWithServiceM8 });
+
+    // In development mode with bypass, return mock data
+    if (process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true') {
+      const mockQuotes = [
+        {
+          id: 'quote-1',
+          uuid: 'attachment-quote-123',
+          attachment_name: 'Quote_ST1001.pdf',
+          file_type: 'pdf',
+          photo_width: null,
+          photo_height: null,
+          attachment_source: 'ServiceM8 Attachment',
+          tags: 'quote,hvac',
+          extracted_info: '',
+          is_favourite: '0',
+          created_by_staff_uuid: 'staff-123',
+          timestamp: '2024-09-15T10:30:00Z',
+          edit_date: '2024-09-15T10:30:00Z',
+          related_object: 'job',
+          related_object_uuid: 'job-123',
+          active: 1,
+          job_id: 'job-123',
+          job_number: 'ST-1001',
+          job_description: 'Air conditioning maintenance and repair',
+          job_status: 'Quote',
+          customer_id: 'customer-1',
+          customer_name: 'John Smith',
+          customer_email: 'john.smith@example.com',
+          servicem8_data: {
+            uuid: 'attachment-quote-123',
+            metadata: {
+              active: 1,
+              tags: 'quote,hvac'
+            }
+          }
+        },
+        {
+          id: 'quote-2',
+          uuid: 'attachment-quote-456',
+          attachment_name: 'Quote_ST1002.pdf',
+          file_type: 'pdf',
+          photo_width: null,
+          photo_height: null,
+          attachment_source: 'ServiceM8 Attachment',
+          tags: 'quote,sensors',
+          extracted_info: '',
+          is_favourite: '1',
+          created_by_staff_uuid: 'staff-456',
+          timestamp: '2024-09-18T14:20:00Z',
+          edit_date: '2024-09-18T14:20:00Z',
+          related_object: 'job',
+          related_object_uuid: 'job-456',
+          active: 1,
+          job_id: 'job-456',
+          job_number: 'ST-1002',
+          job_description: 'Smart sensor installation and configuration',
+          job_status: 'Quote',
+          customer_id: 'customer-2',
+          customer_name: 'Jane Doe',
+          customer_email: 'jane.doe@example.com',
+          servicem8_data: {
+            uuid: 'attachment-quote-456',
+            metadata: {
+              active: 1,
+              tags: 'quote,sensors',
+              is_favourite: '1'
+            }
+          }
+        }
+      ];
+
+      // Apply filters to mock data
+      let filteredQuotes = mockQuotes;
+      
+      if (status) {
+        const activeStatus = parseInt(status);
+        filteredQuotes = filteredQuotes.filter(quote => quote.active === activeStatus);
+      }
+      
+      if (fileType) {
+        filteredQuotes = filteredQuotes.filter(quote => 
+          quote.file_type.toLowerCase().includes(fileType.toLowerCase())
+        );
+      }
+      
+      if (customer) {
+        filteredQuotes = filteredQuotes.filter(quote => 
+          quote.customer_name.toLowerCase().includes(customer.toLowerCase()) ||
+          quote.customer_email.toLowerCase().includes(customer.toLowerCase())
+        );
+      }
+
+      return NextResponse.json({
+        quotes: filteredQuotes,
+        total: filteredQuotes.length,
+        servicem8_status: {
+          available: false,
+          synced: false,
+          error: 'Development mode - using mock data'
+        }
+      });
+    }
 
     let serviceM8Available = false;
     let serviceM8Error: string | null = null;

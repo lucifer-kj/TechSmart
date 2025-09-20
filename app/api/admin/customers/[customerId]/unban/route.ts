@@ -32,8 +32,10 @@ export async function POST(
   const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || undefined;
   const userAgent = request.headers.get("user-agent") || undefined;
 
+  // Extract customerId from params outside try block for error logging
+  const { customerId } = await params;
+
   try {
-    const { customerId } = await params;
 
     // Verify customer exists
     const { data: customer, error: customerError } = await supabase
@@ -61,7 +63,7 @@ export async function POST(
     return NextResponse.json({ message: 'Customer unbanned' });
   } catch (error) {
     console.error('Customer unban error:', error);
-    await logSupabaseCall('/api/admin/customers/{customerId}/unban', 'POST', {}, { error: 'Failed to unban customer' }, 500, Date.now() - startedAt, user.id, ip, userAgent, (error as Error).message);
+    await logSupabaseCall(`/api/admin/customers/${customerId}/unban`, 'POST', {}, { error: 'Failed to unban customer' }, 500, Date.now() - startedAt, user.id, ip, userAgent, (error as Error).message);
     return NextResponse.json({ error: 'Failed to unban customer' }, { status: 500 });
   }
 }

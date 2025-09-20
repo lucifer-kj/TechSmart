@@ -14,15 +14,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Check if user is admin
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  // Check if user is admin (skip check in development mode with bypass)
+  if (!(process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true')) {
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
 
-  if (!profile || profile.role !== "admin") {
-    return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    if (!profile || profile.role !== "admin") {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    }
   }
 
   try {
@@ -33,6 +35,128 @@ export async function GET(request: NextRequest) {
     const customerId = searchParams.get('customerId');
     const jobId = searchParams.get('jobId');
     const syncWithServiceM8 = searchParams.get('sync') === 'true';
+
+    // In development mode with bypass, return mock data
+    if (process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true') {
+      const mockDocuments = [
+        {
+          id: 'doc-1',
+          uuid: 'attachment-123',
+          file_name: 'Quote_ST1001.pdf',
+          file_type: 'pdf',
+          file_size: 245760,
+          attachment_source: 'ServiceM8 Attachment',
+          type: 'quote',
+          url: '/api/servicem8/attachments/attachment-123',
+          date_created: '2024-09-15T10:30:00Z',
+          customer_id: 'customer-1',
+          customer_name: 'John Smith',
+          customer_email: 'john.smith@example.com',
+          job_id: 'job-123',
+          job_number: 'ST-1001',
+          job_description: 'Air conditioning maintenance and repair',
+          job_status: 'Quote',
+          download_url: '/api/servicem8/attachments/attachment-123',
+          preview_url: undefined
+        },
+        {
+          id: 'doc-2',
+          uuid: 'attachment-456',
+          file_name: 'Invoice_ST1002.pdf',
+          file_type: 'pdf',
+          file_size: 156890,
+          attachment_source: 'ServiceM8 Attachment',
+          type: 'invoice',
+          url: '/api/servicem8/attachments/attachment-456',
+          date_created: '2024-09-18T14:20:00Z',
+          customer_id: 'customer-2',
+          customer_name: 'Jane Doe',
+          customer_email: 'jane.doe@example.com',
+          job_id: 'job-456',
+          job_number: 'ST-1002',
+          job_description: 'Smart sensor installation and configuration',
+          job_status: 'Invoice',
+          download_url: '/api/servicem8/attachments/attachment-456',
+          preview_url: undefined
+        },
+        {
+          id: 'doc-3',
+          uuid: 'material-789',
+          file_name: 'Air Filter - Premium HEPA',
+          file_type: 'material',
+          file_size: 0,
+          attachment_source: 'Job Material',
+          type: 'material',
+          url: null,
+          date_created: '2024-09-16T09:45:00Z',
+          customer_id: 'customer-1',
+          customer_name: 'John Smith',
+          customer_email: 'john.smith@example.com',
+          job_id: 'job-123',
+          job_number: 'ST-1001',
+          job_description: 'Air conditioning maintenance and repair',
+          job_status: 'Work Order',
+          download_url: null,
+          preview_url: undefined
+        },
+        {
+          id: 'doc-4',
+          uuid: 'attachment-789',
+          file_name: 'Before_After_Photos.jpg',
+          file_type: 'jpg',
+          file_size: 2048000,
+          attachment_source: 'ServiceM8 Attachment',
+          type: 'photo',
+          url: '/api/servicem8/attachments/attachment-789',
+          date_created: '2024-09-17T16:15:00Z',
+          customer_id: 'customer-3',
+          customer_name: 'Mike Wilson',
+          customer_email: 'mike.wilson@example.com',
+          job_id: 'job-789',
+          job_number: 'ST-1003',
+          job_description: 'HVAC system upgrade and optimization',
+          job_status: 'Complete',
+          download_url: '/api/servicem8/attachments/attachment-789',
+          preview_url: '/api/servicem8/attachments/preview/jpg'
+        }
+      ];
+
+      // Apply filters to mock data
+      let filteredDocuments = mockDocuments;
+      
+      if (documentType) {
+        filteredDocuments = filteredDocuments.filter(doc => doc.type === documentType);
+      }
+      
+      if (customer) {
+        filteredDocuments = filteredDocuments.filter(doc => 
+          doc.customer_name.toLowerCase().includes(customer.toLowerCase()) ||
+          doc.customer_email.toLowerCase().includes(customer.toLowerCase())
+        );
+      }
+      
+      if (customerId) {
+        filteredDocuments = filteredDocuments.filter(doc => doc.customer_id === customerId);
+      }
+      
+      if (jobId) {
+        filteredDocuments = filteredDocuments.filter(doc => doc.job_id === jobId);
+      }
+      
+      if (status) {
+        filteredDocuments = filteredDocuments.filter(doc => doc.job_status === status);
+      }
+
+      return NextResponse.json({
+        documents: filteredDocuments,
+        total: filteredDocuments.length,
+        servicem8_status: {
+          available: false,
+          error: 'Development mode - using mock data',
+          synced: false
+        }
+      });
+    }
 
     let serviceM8Available = false;
     let serviceM8Error: string | null = null;
@@ -48,26 +172,71 @@ export async function GET(request: NextRequest) {
       // Sync with ServiceM8 if requested
       if (syncWithServiceM8) {
         try {
-          console.log('🔄 Syncing documents from ServiceM8 job materials...');
+          console.log('🔄 Syncing documents from ServiceM8 attachments and job materials...');
           
           const serviceM8Client = new ServiceM8Client(process.env.SERVICEM8_API_KEY!);
           
-          // Get all job materials from ServiceM8
-          const jobMaterials = await serviceM8Client.getAllJobMaterials();
-          console.log(`📋 Retrieved ${jobMaterials.length} job materials from ServiceM8`);
+          // Get both attachments and job materials from ServiceM8
+          const [attachments, jobMaterials] = await Promise.all([
+            serviceM8Client.getAllAttachments(),
+            serviceM8Client.getAllJobMaterials()
+          ]);
           
-          if (jobMaterials.length > 0) {
+          console.log(`📋 Retrieved ${attachments.length} attachments and ${jobMaterials.length} job materials from ServiceM8`);
+          
+          // Get all unique job UUIDs
+          const attachmentJobUuids = [...new Set(attachments.map(a => a.related_object_uuid).filter(Boolean))];
+          const materialJobUuids = [...new Set(jobMaterials.map(m => m.job_uuid))];
+          const allJobUuids = [...new Set([...attachmentJobUuids, ...materialJobUuids])];
+          
+          if (allJobUuids.length > 0) {
             // Get jobs to map job UUIDs to customer IDs
-            const jobUuids = [...new Set(jobMaterials.map(m => m.job_uuid))];
             const { data: jobs } = await supabase
               .from('jobs')
               .select('id, customer_id, servicem8_job_uuid')
-              .in('servicem8_job_uuid', jobUuids);
+              .in('servicem8_job_uuid', allJobUuids);
             
             const jobMap = new Map(jobs?.map(job => [job.servicem8_job_uuid, job]) || []);
             
+            // Transform attachments to document format
+            const attachmentDocuments = attachments
+              .filter(attachment => attachment.related_object === 'job')
+              .map(attachment => {
+                const job = jobMap.get(attachment.related_object_uuid);
+                
+                return {
+                  servicem8_attachment_uuid: attachment.uuid,
+                  file_name: attachment.attachment_name || 'Unnamed Attachment',
+                  file_type: attachment.file_type || 'unknown',
+                  file_size: 0, // ServiceM8 attachments don't include file size
+                  attachment_source: 'ServiceM8 Attachment',
+                  type: determineDocumentType(attachment.attachment_name, attachment.file_type),
+                  title: attachment.attachment_name || 'Unnamed Attachment',
+                  url: null, // ServiceM8 attachments require separate API call to get URL
+                  date_created_sm8: attachment.edit_date,
+                  created_at: new Date().toISOString(),
+                  customer_id: job?.customer_id,
+                  job_id: job?.id,
+                  // Store additional attachment data as metadata
+                  metadata: {
+                    photo_width: attachment.photo_width,
+                    photo_height: attachment.photo_height,
+                    attachment_source: attachment.attachment_source,
+                    tags: attachment.tags,
+                    extracted_info: attachment.extracted_info,
+                    is_favourite: attachment.is_favourite,
+                    created_by_staff_uuid: attachment.created_by_staff_uuid,
+                    timestamp: attachment.timestamp,
+                    lng: attachment.lng,
+                    lat: attachment.lat,
+                    related_object: attachment.related_object,
+                    active: attachment.active
+                  }
+                };
+              }).filter(doc => doc.customer_id && doc.job_id); // Only include attachments with valid job mappings
+            
             // Transform job materials to document format
-            const documentsToUpsert = jobMaterials.map(material => {
+            const materialDocuments = jobMaterials.map(material => {
               const job = jobMap.get(material.job_uuid);
               
               return {
@@ -95,13 +264,14 @@ export async function GET(request: NextRequest) {
               };
             }).filter(doc => doc.customer_id && doc.job_id); // Only include materials with valid job mappings
             
-            console.log(`📋 Preparing to sync ${documentsToUpsert.length} job materials as documents`);
+            const allDocuments = [...attachmentDocuments, ...materialDocuments];
+            console.log(`📋 Preparing to sync ${allDocuments.length} documents (${attachmentDocuments.length} attachments + ${materialDocuments.length} materials)`);
             
             // Upsert documents to database
-            if (documentsToUpsert.length > 0) {
+            if (allDocuments.length > 0) {
               const { error: upsertError } = await supabase
                 .from('documents')
-                .upsert(documentsToUpsert, {
+                .upsert(allDocuments, {
                   onConflict: 'servicem8_attachment_uuid'
                 });
               
@@ -110,13 +280,13 @@ export async function GET(request: NextRequest) {
                 throw upsertError;
               }
               
-              console.log(`✅ Successfully synced ${documentsToUpsert.length} job materials as documents`);
+              console.log(`✅ Successfully synced ${allDocuments.length} documents from ServiceM8`);
             }
           } else {
-            console.log('⚠️ No job materials found in ServiceM8');
+            console.log('⚠️ No attachments or job materials found in ServiceM8');
           }
         } catch (error) {
-          console.error('❌ ServiceM8 job materials sync error:', error);
+          console.error('❌ ServiceM8 documents sync error:', error);
           serviceM8Error = error instanceof Error ? error.message : 'Unknown ServiceM8 error';
           serviceM8Available = false;
           // Continue with database query even if ServiceM8 fails
@@ -241,6 +411,20 @@ export async function GET(request: NextRequest) {
     console.error('Admin documents error:', error);
     return NextResponse.json({ error: 'Failed to load documents' }, { status: 500 });
   }
+}
+
+function determineDocumentType(fileName?: string, fileType?: string): string {
+  const name = (fileName || '').toLowerCase();
+  const type = (fileType || '').toLowerCase();
+  
+  if (name.includes('quote') || name.includes('estimate')) return 'quote';
+  if (name.includes('invoice') || name.includes('bill')) return 'invoice';
+  if (name.includes('receipt') || name.includes('payment')) return 'receipt';
+  if (name.includes('contract') || name.includes('agreement')) return 'contract';
+  if (name.includes('photo') || name.includes('image') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(type)) return 'photo';
+  if (type === 'pdf') return 'document';
+  
+  return 'other';
 }
 
 function getPreviewUrl(fileType: string): string | undefined {

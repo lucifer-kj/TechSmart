@@ -12,6 +12,7 @@
     "test:coverage": "jest --coverage",
     "test:ci": "jest --ci --coverage --watchAll=false",
     "seed": "tsx scripts/seed-dev-data.ts",
+    "setup-dev": "tsx scripts/setup-dev-env.ts",
     "fix-dev-setup": "tsx scripts/fix-dev-setup.ts",
     "test-client-api": "tsx scripts/test-client-api.ts",
     "setup-servicem8": "tsx scripts/setup-servicem8.ts",

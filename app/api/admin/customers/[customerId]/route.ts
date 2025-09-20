@@ -120,8 +120,10 @@ export async function PATCH(
   const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || undefined;
   const userAgent = request.headers.get("user-agent") || undefined;
 
+  // Extract customerId from params outside try block for error logging
+  const { customerId } = await params;
+
   try {
-    const { customerId } = await params;
 
     // Verify exists
     const { data: existing, error: existingErr } = await supabase
@@ -176,7 +178,7 @@ export async function PATCH(
     return NextResponse.json({ customer: updated });
   } catch (error) {
     console.error('Customer update error:', error);
-    await logSupabaseCall('/api/admin/customers/{customerId}', 'PATCH', {}, { error: 'Failed to update customer' }, 500, Date.now() - startedAt, user.id, ip, userAgent, (error as Error).message);
+    await logSupabaseCall(`/api/admin/customers/${customerId}`, 'PATCH', {}, { error: 'Failed to update customer' }, 500, Date.now() - startedAt, user.id, ip, userAgent, (error as Error).message);
     return NextResponse.json({ error: 'Failed to update customer' }, { status: 500 });
   }
 }

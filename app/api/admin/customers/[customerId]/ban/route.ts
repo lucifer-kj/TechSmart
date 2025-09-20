@@ -32,8 +32,10 @@ export async function POST(
   const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || undefined;
   const userAgent = request.headers.get("user-agent") || undefined;
 
+  // Extract customerId from params outside try block for error logging
+  const { customerId } = await params;
+
   try {
-    const { customerId } = await params;
     const body = await request.json().catch(() => ({} as { reason?: string }));
     const reason = (body as { reason?: string }).reason?.toString().trim();
     if (!reason) {
@@ -80,7 +82,7 @@ export async function POST(
     return NextResponse.json({ message: 'Customer banned' });
   } catch (error) {
     console.error('Customer ban error:', error);
-    await logSupabaseCall('/api/admin/customers/{customerId}/ban', 'POST', {}, { error: 'Failed to ban customer' }, 500, Date.now() - startedAt, user.id, ip, userAgent, (error as Error).message);
+    await logSupabaseCall(`/api/admin/customers/${customerId}/ban`, 'POST', {}, { error: 'Failed to ban customer' }, 500, Date.now() - startedAt, user.id, ip, userAgent, (error as Error).message);
     return NextResponse.json({ error: 'Failed to ban customer' }, { status: 500 });
   }
 }

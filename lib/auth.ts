@@ -25,6 +25,15 @@ export async function getSupabaseServerClient() {
 
 export async function getAuthUser() {
   try {
+    // Development mode bypass
+    if (process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true') {
+      return {
+        id: 'dev-admin-user',
+        email: 'admin@dev.local',
+        role: 'admin'
+      } as unknown as { id: string; email: string; role: string };
+    }
+
     // Prefer identity propagated by middleware via headers to avoid
     // transient 401s when cookies haven't been set on first load.
     const { headers } = await import('next/headers');

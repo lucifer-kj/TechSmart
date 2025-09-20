@@ -13,15 +13,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Check if user is admin
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  // Check if user is admin (skip check in development mode with bypass)
+  if (!(process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true')) {
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
 
-  if (!profile || profile.role !== "admin") {
-    return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    if (!profile || profile.role !== "admin") {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    }
   }
 
   try {
@@ -29,6 +31,86 @@ export async function GET(request: Request) {
     const role = searchParams.get('role');
     const status = searchParams.get('status');
     const search = searchParams.get('search');
+
+    // In development mode with bypass, return mock data
+    if (process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true') {
+      const mockUsers = [
+        {
+          id: 'user-1',
+          email: 'admin@example.com',
+          role: 'admin',
+          is_active: true,
+          created_at: '2024-01-15T10:00:00Z',
+          last_login: '2024-09-20T08:30:00Z',
+          customer_id: null,
+          customer_name: null,
+          servicem8_customer_uuid: null,
+          job_count: undefined,
+          last_activity: '2024-09-20T08:30:00Z'
+        },
+        {
+          id: 'user-2',
+          email: 'john.smith@example.com',
+          role: 'customer',
+          is_active: true,
+          created_at: '2024-02-10T14:20:00Z',
+          last_login: '2024-09-19T16:45:00Z',
+          customer_id: 'customer-1',
+          customer_name: 'John Smith',
+          servicem8_customer_uuid: 'sm8-customer-123',
+          job_count: 5,
+          last_activity: '2024-09-19T16:45:00Z'
+        },
+        {
+          id: 'user-3',
+          email: 'jane.doe@example.com',
+          role: 'customer',
+          is_active: true,
+          created_at: '2024-03-05T09:15:00Z',
+          last_login: '2024-09-18T11:20:00Z',
+          customer_id: 'customer-2',
+          customer_name: 'Jane Doe',
+          servicem8_customer_uuid: 'sm8-customer-456',
+          job_count: 3,
+          last_activity: '2024-09-18T11:20:00Z'
+        },
+        {
+          id: 'user-4',
+          email: 'mike.wilson@example.com',
+          role: 'customer',
+          is_active: false,
+          created_at: '2024-01-20T13:45:00Z',
+          last_login: '2024-08-15T10:30:00Z',
+          customer_id: 'customer-3',
+          customer_name: 'Mike Wilson',
+          servicem8_customer_uuid: 'sm8-customer-789',
+          job_count: 1,
+          last_activity: '2024-08-15T10:30:00Z'
+        }
+      ];
+
+      // Apply filters to mock data
+      let filteredUsers = mockUsers;
+      
+      if (role) {
+        filteredUsers = filteredUsers.filter(user => user.role === role);
+      }
+      
+      if (status === 'active') {
+        filteredUsers = filteredUsers.filter(user => user.is_active);
+      } else if (status === 'inactive') {
+        filteredUsers = filteredUsers.filter(user => !user.is_active);
+      }
+      
+      if (search) {
+        filteredUsers = filteredUsers.filter(user => 
+          user.email.toLowerCase().includes(search.toLowerCase()) ||
+          user.customer_name?.toLowerCase().includes(search.toLowerCase())
+        );
+      }
+
+      return NextResponse.json({ users: filteredUsers });
+    }
 
     // Build query for user profiles with customer info
     let query = supabase

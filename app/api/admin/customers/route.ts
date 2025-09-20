@@ -445,29 +445,65 @@ export async function POST(request: NextRequest) {
 
     if (customerError) throw customerError;
 
-    // Create portal access if requested (Auth creation handled elsewhere)
+    // Create portal access if requested
     let tempPassword: string | null = null;
-    if (createPortalAccess) {
-      
-      if (generateCredentials) {
-        // Generate secure temporary password
-        tempPassword = generateSecurePassword();
-      }
+    let authUserId: string | null = null;
+    
+    if (createPortalAccess && email) {
+      try {
+        if (generateCredentials) {
+          // Generate secure temporary password
+          tempPassword = generateSecurePassword();
+        }
 
-      // Create user profile for portal access
-      const { error: profileError } = await supabase
-        .from('user_profiles')
-        .insert({
-          customer_id: customer.id,
-          role: 'customer',
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+        // Create Supabase Auth user
+        const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+          email: email,
+          password: tempPassword || generateSecurePassword(),
+          email_confirm: true, // Auto-confirm email for admin-created users
+          user_metadata: {
+            name: name,
+            customer_id: customer.id,
+            role: 'customer'
+          }
         });
 
-      if (profileError) {
-        console.error('Profile creation error:', profileError);
-        // Don't fail the whole operation, just log the error
+        if (authError) {
+          console.error('Auth user creation error:', authError);
+          throw new Error(`Failed to create auth user: ${authError.message}`);
+        }
+
+        if (authUser?.user) {
+          authUserId = authUser.user.id;
+          
+          // Create user profile linked to the auth user
+          const { error: profileError } = await supabase
+            .from('user_profiles')
+            .insert({
+              id: authUser.user.id, // Use the auth user ID
+              email: email,
+              full_name: name,
+              customer_id: customer.id,
+              role: 'customer',
+              is_active: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+
+          if (profileError) {
+            console.error('Profile creation error:', profileError);
+            // If profile creation fails, clean up the auth user
+            await supabase.auth.admin.deleteUser(authUser.user.id);
+            throw new Error(`Failed to create user profile: ${profileError.message}`);
+          }
+          
+          console.log(`✅ Created auth user and profile for customer: ${name} (${email})`);
+        }
+      } catch (error) {
+        console.error('Portal access creation failed:', error);
+        // Clean up customer record if auth creation fails
+        await supabase.from('customers').delete().eq('id', customer.id);
+        throw error;
       }
       // Email handling is out of scope of this endpoint per project rules
     }
@@ -476,7 +512,15 @@ export async function POST(request: NextRequest) {
       customer: {
         ...customer,
         tempPassword: createPortalAccess && generateCredentials ? tempPassword : undefined,
-        servicem8_data: serviceM8CustomerData
+        servicem8_data: serviceM8CustomerData,
+        auth_user_id: authUserId,
+        portal_access_created: !!authUserId,
+        login_instructions: authUserId ? {
+          email: email,
+          password: tempPassword,
+          login_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/login`,
+          note: "Customer can now login with these credentials"
+        } : undefined
       }
     };
 
