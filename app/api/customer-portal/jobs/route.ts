@@ -10,8 +10,8 @@ export async function GET(request: NextRequest) {
   const isDevelopment = process.env.NODE_ENV === 'development';
   const hasMockData = process.env.SERVICEM8_CUSTOMER_UUID && !process.env.SERVICEM8_API_KEY;
   
-  // If in development mode and no API key, return mock data
-  if (isDevelopment && hasMockData) {
+  // Helper function to return mock data
+  const returnMockData = async () => {
     try {
       const customerId = process.env.SERVICEM8_CUSTOMER_UUID || "company-123";
       const mockJobs = await getJobsForCustomer(customerId);
@@ -20,19 +20,19 @@ export async function GET(request: NextRequest) {
       console.error('Mock data error:', error);
       return NextResponse.json({ error: 'Failed to load mock data' }, { status: 500 });
     }
+  };
+  
+  // If in development mode and no API key, return mock data immediately
+  if (isDevelopment && hasMockData) {
+    return await returnMockData();
   }
 
   const user = await getAuthUser();
   if (!user) {
     // Fallback to mock data if auth fails in development
     if (isDevelopment) {
-      try {
-        const customerId = process.env.SERVICEM8_CUSTOMER_UUID || "company-123";
-        const mockJobs = await getJobsForCustomer(customerId);
-        return NextResponse.json({ jobs: mockJobs });
-      } catch (error) {
-        console.error('Auth fallback mock data error:', error);
-      }
+      console.log('Auth failed, falling back to mock data in development');
+      return await returnMockData();
     }
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -44,42 +44,34 @@ export async function GET(request: NextRequest) {
     );
     
     // Derive customer/company from session
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('user_profiles')
       .select('customer_id')
       .eq('id', user.id)
       .single();
     
     if (!profile?.customer_id) {
+      console.log('Profile lookup failed:', profileError);
       // Fallback to mock data if profile not found in development
       if (isDevelopment) {
-        try {
-          const customerId = process.env.SERVICEM8_CUSTOMER_UUID || "company-123";
-          const mockJobs = await getJobsForCustomer(customerId);
-          return NextResponse.json({ jobs: mockJobs });
-        } catch (error) {
-          console.error('Profile fallback mock data error:', error);
-        }
+        console.log('Profile not found, falling back to mock data in development');
+        return await returnMockData();
       }
       return NextResponse.json({ error: 'Customer profile not found' }, { status: 404 });
     }
     
-    const { data: customerRow } = await supabase
+    const { data: customerRow, error: customerError } = await supabase
       .from('customers')
       .select('id, servicem8_customer_uuid')
       .eq('id', profile.customer_id)
       .single();
     
     if (!customerRow?.servicem8_customer_uuid) {
+      console.log('Customer lookup failed:', customerError);
       // Fallback to mock data if customer mapping not found in development
       if (isDevelopment) {
-        try {
-          const customerId = process.env.SERVICEM8_CUSTOMER_UUID || "company-123";
-          const mockJobs = await getJobsForCustomer(customerId);
-          return NextResponse.json({ jobs: mockJobs });
-        } catch (error) {
-          console.error('Customer mapping fallback mock data error:', error);
-        }
+        console.log('Customer mapping not found, falling back to mock data in development');
+        return await returnMockData();
       }
       return NextResponse.json({ error: 'Customer mapping not found' }, { status: 404 });
     }
@@ -114,13 +106,8 @@ export async function GET(request: NextRequest) {
     
     // Final fallback to mock data in development
     if (isDevelopment) {
-      try {
-        const customerId = process.env.SERVICEM8_CUSTOMER_UUID || "company-123";
-        const mockJobs = await getJobsForCustomer(customerId);
-        return NextResponse.json({ jobs: mockJobs });
-      } catch (mockError) {
-        console.error('Final fallback mock data error:', mockError);
-      }
+      console.log('Final error fallback to mock data in development');
+      return await returnMockData();
     }
     
     return NextResponse.json({ error: 'Failed to fetch jobs' }, { status: 500 });

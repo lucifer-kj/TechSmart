@@ -24,18 +24,29 @@ export async function getSupabaseServerClient() {
 }
 
 export async function getAuthUser() {
-  // Prefer identity propagated by middleware via headers to avoid
-  // transient 401s when cookies haven't been set on first load.
-  const { headers } = await import('next/headers');
-  const h = await headers();
-  const userIdFromHeader = h.get('x-user-id');
-  if (userIdFromHeader) {
-    return { id: userIdFromHeader } as unknown as { id: string };
-  }
+  try {
+    // Prefer identity propagated by middleware via headers to avoid
+    // transient 401s when cookies haven't been set on first load.
+    const { headers } = await import('next/headers');
+    const h = await headers();
+    const userIdFromHeader = h.get('x-user-id');
+    if (userIdFromHeader) {
+      return { id: userIdFromHeader } as unknown as { id: string };
+    }
 
-  const supabase = await getSupabaseServerClient();
-  const { data } = await supabase.auth.getUser();
-  return data.user ?? null;
+    const supabase = await getSupabaseServerClient();
+    const { data, error } = await supabase.auth.getUser();
+    
+    if (error) {
+      console.error('Auth error:', error);
+      return null;
+    }
+    
+    return data.user ?? null;
+  } catch (error) {
+    console.error('getAuthUser error:', error);
+    return null;
+  }
 }
 
 

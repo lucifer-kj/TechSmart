@@ -6,8 +6,8 @@ export async function GET() {
   // Development mode bypass for testing
   const isDevelopment = process.env.NODE_ENV === 'development';
   
-  // If in development mode and no API key, return mock data
-  if (isDevelopment && !process.env.SERVICEM8_API_KEY) {
+  // Helper function to return mock dashboard data
+  const returnMockDashboard = () => {
     try {
       // Using mock data for development
       const mockDashboardData = {
@@ -42,28 +42,19 @@ export async function GET() {
       console.error('Mock dashboard data error:', error);
       return NextResponse.json({ error: 'Failed to load mock dashboard data' }, { status: 500 });
     }
+  };
+  
+  // If in development mode and no API key, return mock data immediately
+  if (isDevelopment && !process.env.SERVICEM8_API_KEY) {
+    return returnMockDashboard();
   }
 
   const user = await getAuthUser();
   if (!user) {
     // Fallback to mock data if auth fails in development
     if (isDevelopment) {
-      try {
-        // Using mock data for development
-        const mockDashboardData = {
-          totalJobs: 8,
-          activeJobs: 3,
-          pendingApprovals: 2,
-          totalValue: 5500,
-          pendingPayments: 2,
-          overduePayments: 1,
-          totalPaid: 600,
-          recentJobs: [],
-        };
-        return NextResponse.json(mockDashboardData);
-      } catch (error) {
-        console.error('Auth fallback mock dashboard data error:', error);
-      }
+      console.log('Auth failed, falling back to mock dashboard data in development');
+      return returnMockDashboard();
     }
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -80,22 +71,8 @@ export async function GET() {
     
     // Final fallback to mock data in development
     if (isDevelopment) {
-      try {
-        // Using mock data for development
-        const mockDashboardData = {
-          totalJobs: 8,
-          activeJobs: 3,
-          pendingApprovals: 2,
-          totalValue: 5500,
-          pendingPayments: 2,
-          overduePayments: 1,
-          totalPaid: 600,
-          recentJobs: [],
-        };
-        return NextResponse.json(mockDashboardData);
-      } catch (mockError) {
-        console.error('Final fallback mock dashboard data error:', mockError);
-      }
+      console.log('Final error fallback to mock dashboard data in development');
+      return returnMockDashboard();
     }
     
     return NextResponse.json({ error: 'Failed to fetch dashboard data' }, { status: 500 });
