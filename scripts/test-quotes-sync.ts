@@ -92,7 +92,7 @@ async function testQuotesSync(): Promise<void> {
       if (dbQuotes && dbQuotes.length > 0) {
         console.log('\n📊 Quote file types breakdown:');
         const typeCount = dbQuotes.reduce((acc: Record<string, number>, quote) => {
-          const type = quote.file_type || 'unknown';
+          const type = quote.type || 'unknown';
           acc[type] = (acc[type] || 0) + 1;
           return acc;
         }, {});

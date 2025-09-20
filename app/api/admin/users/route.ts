@@ -76,7 +76,7 @@ export async function GET(request: Request) {
 
     // Get job counts for customers
     const customerIds = userProfiles?.filter(p => p.customer_id).map(p => p.customer_id!) || [];
-    let jobCounts = new Map<string, number>();
+    const jobCounts = new Map<string, number>();
     
     if (customerIds.length > 0) {
       const { data: jobCountsData } = await supabase
