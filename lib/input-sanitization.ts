@@ -4,7 +4,7 @@ export interface SanitizationConfig {
   maxLength?: number;
   allowedChars?: RegExp;
   required?: boolean;
-  type?: 'string' | 'number' | 'email' | 'phone' | 'url' | 'json';
+  type?: 'string' | 'number' | 'email' | 'phone' | 'url' | 'json' | 'boolean';
   sanitizeHtml?: boolean;
 }
 
@@ -57,6 +57,9 @@ export class InputSanitizationService {
         break;
       case 'json':
         sanitizedValue = this.sanitizeJson(inputValue);
+        break;
+      case 'boolean':
+        sanitizedValue = this.sanitizeBoolean(inputValue);
         break;
       default:
         sanitizedValue = this.sanitizeString(String(inputValue));
@@ -217,6 +220,25 @@ export class InputSanitizationService {
       }
     }
     return value;
+  }
+
+  private sanitizeBoolean(value: unknown): boolean {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const lowerValue = value.toLowerCase().trim();
+      if (lowerValue === 'true' || lowerValue === '1' || lowerValue === 'yes' || lowerValue === 'on') {
+        return true;
+      }
+      if (lowerValue === 'false' || lowerValue === '0' || lowerValue === 'no' || lowerValue === 'off') {
+        return false;
+      }
+    }
+    if (typeof value === 'number') {
+      return value !== 0;
+    }
+    return Boolean(value);
   }
 
   private sanitizeHtml(value: string): string {

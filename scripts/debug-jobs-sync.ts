@@ -184,7 +184,7 @@ async function debugJobsSync(): Promise<void> {
       } else {
         console.log(`❌ Admin API returned: ${response.status} ${response.statusText}`);
       }
-    } catch (apiTestError) {
+    } catch {
       console.log('⚠️ Could not test admin API (server might not be running)');
     }
     

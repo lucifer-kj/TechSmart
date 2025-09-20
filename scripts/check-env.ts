@@ -81,7 +81,6 @@ const checkEnvironment = () => {
   console.log('✅ .env.local file found\n');
   
   let allRequired = true;
-  let hasOptional = true;
   
   console.log('📋 Environment Variables Status:\n');
   
@@ -106,8 +105,6 @@ const checkEnvironment = () => {
       
       if (envVar.required) {
         allRequired = false;
-      } else {
-        hasOptional = false;
       }
     }
     

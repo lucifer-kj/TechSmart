@@ -24,7 +24,7 @@ async function testDatabaseConnectivity() {
   try {
     // Test 1: Check if we can connect to Supabase
     console.log('📡 Testing Supabase connection...');
-    const { data: healthCheck, error: healthError } = await supabase
+    const { error: healthError } = await supabase
       .from('customers')
       .select('count', { count: 'exact', head: true });
 

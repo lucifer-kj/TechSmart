@@ -5,12 +5,10 @@
  * Tests both scenarios: with and without credential generation
  */
 
-import { createClient } from '@supabase/supabase-js';
 import { ServiceM8Client } from '../lib/servicem8';
 
 // Skip Supabase client creation for development testing
 // We'll test the API logic directly
-const supabase = null;
 
 const apiKey = process.env.SERVICEM8_API_KEY || 'test-key';
 
@@ -108,9 +106,9 @@ async function testCustomerLinkIntegration() {
     console.log('Test 3: ServiceM8 client validation');
     try {
       const sm8Client = new ServiceM8Client(apiKey);
-      const companyData = await sm8Client.getCompany('test-uuid-123');
+      await sm8Client.getCompany('test-uuid-123');
       console.log('✅ ServiceM8 client validation working');
-    } catch (error) {
+    } catch {
       console.log('⚠️ ServiceM8 client validation test skipped (expected for test UUID)');
     }
   } else {
