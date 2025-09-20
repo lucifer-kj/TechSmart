@@ -12,16 +12,36 @@ export interface ServiceM8Company {
 
 export interface ServiceM8Job {
   uuid: string;
-  job_number: string;
+  generated_job_id: string; // This is the actual job number field
   company_uuid: string;
   job_description: string;
   status: 'Quote' | 'Work Order' | 'Invoice' | 'Complete' | 'Cancelled';
-  generated_job_total: number;
+  generated_job_total?: number;
+  total_invoice_amount?: string; // ServiceM8 returns this as string
   job_address: string;
-  date_created: string;
-  date_last_modified: string;
-  date_completed?: string;
-  staff_uuid?: string;
+  edit_date?: string; // ServiceM8 uses this instead of date_last_modified
+  date?: string; // ServiceM8 job date
+  quote_date?: string;
+  work_order_date?: string;
+  completion_date?: string;
+  created_by_staff_uuid?: string;
+  active: number; // ServiceM8 uses 1/0 instead of boolean
+  
+  // Additional ServiceM8 fields that might be useful
+  billing_address?: string;
+  work_done_description?: string;
+  payment_amount?: number;
+  payment_date?: string;
+  ready_to_invoice?: string;
+  category_uuid?: string;
+  purchase_order_number?: string;
+  
+  // Legacy fields for backward compatibility
+  job_number?: string; // We'll map generated_job_id to this
+  date_created?: string; // We'll map date or edit_date to this
+  date_last_modified?: string; // We'll map edit_date to this
+  date_completed?: string; // We'll map completion_date to this
+  staff_uuid?: string; // We'll map created_by_staff_uuid to this
 }
 
 export interface ServiceM8JobMaterial {

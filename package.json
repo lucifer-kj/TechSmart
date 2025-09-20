@@ -17,6 +17,10 @@
     "setup-servicem8": "tsx scripts/setup-servicem8.ts",
     "diagnose-servicem8": "tsx scripts/diagnose-servicem8.ts",
     "setup-env": "tsx scripts/setup-env.ts",
+    "test-servicem8-jobs": "tsx scripts/test-servicem8-jobs.ts",
+    "debug-jobs-sync": "tsx scripts/debug-jobs-sync.ts",
+    "test-jobs-direct": "tsx scripts/test-jobs-direct.ts",
+    "test-jobs-sync-fixed": "tsx scripts/test-jobs-sync-fixed.ts",
     "check-env": "tsx scripts/check-env.ts",
     "test-servicem8-config": "tsx scripts/test-servicem8-config.ts"
   },

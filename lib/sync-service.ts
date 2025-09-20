@@ -80,21 +80,31 @@ export class SyncService {
       throw new Error('Customer not found in database');
     }
 
-    const jobsToUpsert = jobs.map(job => ({
-      customer_id: customer.id,
-      servicem8_job_uuid: job.uuid,
-      job_no: job.job_number,
-      description: job.job_description,
-      status: job.status,
-      job_address: job.job_address,
-      generated_job_total: job.generated_job_total,
-      date_completed: job.date_completed,
-      staff_uuid: job.staff_uuid,
-      date_created_sm8: job.date_created,
-      date_last_modified_sm8: job.date_last_modified,
-      updated: job.date_last_modified,
-      updated_at: new Date().toISOString()
-    }));
+    const jobsToUpsert = jobs.map(job => {
+      // Map ServiceM8 fields to our database fields
+      const jobNumber = job.generated_job_id || job.job_number || job.uuid;
+      const dateCreated = job.date || job.quote_date || job.work_order_date;
+      const dateModified = job.edit_date;
+      const dateCompleted = job.completion_date && job.completion_date !== '0000-00-00 00:00:00' ? job.completion_date : null;
+      const staffUuid = job.created_by_staff_uuid || job.staff_uuid;
+      const jobTotal = job.generated_job_total || (job.total_invoice_amount ? parseFloat(job.total_invoice_amount) : 0);
+      
+      return {
+        customer_id: customer.id,
+        servicem8_job_uuid: job.uuid,
+        job_no: jobNumber,
+        description: job.job_description || '',
+        status: job.status,
+        job_address: job.job_address || '',
+        generated_job_total: jobTotal,
+        date_completed: dateCompleted,
+        staff_uuid: staffUuid,
+        date_created_sm8: dateCreated,
+        date_last_modified_sm8: dateModified,
+        updated: dateModified || dateCreated || new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+    });
 
     const { error } = await this.supabase
       .from('jobs')
