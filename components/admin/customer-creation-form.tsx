@@ -100,7 +100,8 @@ export function CustomerCreationForm({ onCustomerCreated, onError, onLoading }: 
             email: formData.email,
             phone: formData.phone,
             address: formData.address,
-            createPortalAccess: formData.createPortalAccess
+            createPortalAccess: formData.createPortalAccess,
+            generateCredentials: formData.generateCredentials
           }
         : formData;
 

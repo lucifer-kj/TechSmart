@@ -14,13 +14,15 @@ type LinkCustomerRequest = {
   phone?: string;
   address?: string;
   createPortalAccess?: boolean;
+  generateCredentials?: boolean;
 };
 
 const LinkCustomerSchema: Record<string, SanitizationConfig> = {
   name: { type: 'string', required: false, maxLength: 255, allowedChars: /^[a-zA-Z0-9\s\-\.&'"]+$/ },
   email: { type: 'email', required: false, maxLength: 255 },
   phone: { type: 'phone', required: false, maxLength: 20 },
-  address: { type: 'string', required: false, maxLength: 500, sanitizeHtml: true }
+  address: { type: 'string', required: false, maxLength: 500, sanitizeHtml: true },
+  generateCredentials: { type: 'boolean', required: false }
 };
 
 function isUUIDv4(value: string): boolean {
@@ -72,6 +74,7 @@ export async function POST(request: NextRequest) {
     const email = sanitizedInputs.email as string | undefined;
     const phone = sanitizedInputs.phone as string | undefined;
     const address = sanitizedInputs.address as string | undefined;
+    const generateCredentials = sanitizedInputs.generateCredentials as boolean | undefined;
 
     // Create customer in Supabase linked to existing ServiceM8 client
     const { data: customer, error: customerError } = await supabase
@@ -144,7 +147,84 @@ export async function POST(request: NextRequest) {
     }
 
     // Optional: create portal access profile
-    if (body.createPortalAccess) {
+    let tempPassword: string | null = null;
+    let authUserId: string | null = null;
+
+    if (body.createPortalAccess && email) {
+      try {
+        // Generate secure temporary password if credentials should be generated
+        if (generateCredentials) {
+          tempPassword = generateSecurePassword();
+
+          // Create Supabase Auth user
+          const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+            email: email,
+            password: tempPassword,
+            email_confirm: true, // Auto-confirm email for admin-created users
+            user_metadata: {
+              name: name || 'Unknown',
+              customer_id: customer.id,
+              role: 'customer'
+            }
+          });
+
+          if (authError) {
+            console.error('Auth user creation error:', authError);
+            throw new Error(`Failed to create auth user: ${authError.message}`);
+          }
+
+          if (authUser?.user) {
+            authUserId = authUser.user.id;
+
+            // Create user profile linked to the auth user
+            const { error: profileError } = await supabase
+              .from('user_profiles')
+              .insert({
+                id: authUser.user.id, // Use the auth user ID
+                email: email,
+                full_name: name || 'Unknown',
+                customer_id: customer.id,
+                role: 'customer',
+                is_active: true,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              });
+
+            if (profileError) {
+              console.error('Profile creation error:', profileError);
+              // If profile creation fails, clean up the auth user
+              await supabase.auth.admin.deleteUser(authUser.user.id);
+              throw new Error(`Failed to create user profile: ${profileError.message}`);
+            }
+
+            console.log(`✅ Created auth user and profile for customer: ${name} (${email})`);
+          }
+        } else {
+          // Create basic user profile without auth user (for cases where we just want to link to existing user)
+          const { error: profileError } = await supabase
+            .from('user_profiles')
+            .insert({
+              email: email,
+              full_name: name || 'Unknown',
+              customer_id: customer.id,
+              role: 'customer',
+              is_active: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+
+          if (profileError) {
+            console.warn('Profile creation warning:', profileError);
+          }
+        }
+      } catch (error) {
+        console.error('Portal access creation failed:', error);
+        // Clean up customer record if auth creation fails
+        await supabase.from('customers').delete().eq('id', customer.id);
+        throw error;
+      }
+    } else if (body.createPortalAccess) {
+      // Create basic user profile without email (minimal access)
       const { error: profileError } = await supabase
         .from('user_profiles')
         .insert({
@@ -160,8 +240,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const responsePayload = { 
-      customer,
+    const responsePayload = {
+      customer: {
+        ...customer,
+        tempPassword: authUserId ? tempPassword : undefined,
+        auth_user_id: authUserId,
+        portal_access_created: !!authUserId,
+        login_instructions: authUserId && email ? {
+          email: email,
+          password: tempPassword,
+          login_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/login`,
+          note: "Customer can now login with these credentials"
+        } : undefined
+      },
       syncResult: syncResult ? {
         jobsSynced: syncResult.jobCount,
         clientExists,
@@ -178,6 +269,26 @@ export async function POST(request: NextRequest) {
     await logSupabaseCall("/api/admin/customers/link", "POST", {}, { error: 'Failed to link customer' }, 500, Date.now() - startedAt, user.id, ip, userAgent, (error as Error).message);
     return NextResponse.json({ error: 'Failed to link customer' }, { status: 500 });
   }
+}
+
+// Helper function to generate secure temporary password
+function generateSecurePassword(length: number = 12): string {
+  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+  let password = '';
+
+  // Ensure at least one of each type
+  password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)];
+  password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)];
+  password += '0123456789'[Math.floor(Math.random() * 10)];
+  password += '!@#$%^&*'[Math.floor(Math.random() * 8)];
+
+  // Fill the rest randomly
+  for (let i = 4; i < length; i++) {
+    password += charset[Math.floor(Math.random() * charset.length)];
+  }
+
+  // Shuffle the password
+  return password.split('').sort(() => Math.random() - 0.5).join('');
 }
 
 
