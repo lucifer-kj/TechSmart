@@ -49,7 +49,6 @@ describe('CustomerCreationForm', () => {
   it('shows copy button when UUID is present', () => {
     render(<CustomerCreationForm {...mockProps} />);
     
-    const uuidInput = screen.getByLabelText(/servicem8 customer uuid/i);
     const generateButton = screen.getByText(/generate uuid/i);
     
     // Initially no copy button

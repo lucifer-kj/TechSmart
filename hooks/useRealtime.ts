@@ -34,9 +34,13 @@ export function useRealtime<TRecord = unknown>(
     const channel = supabase
       .channel(name)
       .on(
-        "postgres_changes" as const,
-        { event: event as "INSERT" | "UPDATE" | "DELETE" | "*", schema, table, filter } as any,
-        (payload: any) => {
+        "postgres_changes" as any,
+        { event, schema, table, filter },
+        (payload: {
+          eventType: "INSERT" | "UPDATE" | "DELETE";
+          new?: unknown;
+          old?: unknown;
+        }) => {
           if (!isMounted.current) return;
           onChange({
             eventType: payload.eventType,

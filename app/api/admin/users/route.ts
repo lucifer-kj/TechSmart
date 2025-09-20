@@ -140,10 +140,6 @@ export async function GET(request: Request) {
       query = query.eq('is_active', false);
     }
 
-    if (search) {
-      // For now, we'll filter in memory since we need to search across multiple fields
-      // In a production app, you might want to use full-text search or create a view
-    }
 
     const { data: userProfiles, error: profilesError } = await query;
 

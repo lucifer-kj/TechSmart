@@ -161,7 +161,7 @@ export default function AdminUsersPage() {
           <Button variant="outline" size="sm">
             📊 User Report
           </Button>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => loadUsers()}>
             🔄 Refresh Data
           </Button>
         </div>
