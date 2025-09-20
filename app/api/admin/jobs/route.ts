@@ -2,6 +2,27 @@ import { getAuthUser } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { SyncService } from "@/lib/sync-service";
+import { ServiceM8Client, ServiceM8Job } from "@/lib/servicem8";
+import { logSupabaseCall } from "@/lib/api-logging";
+
+type Job = {
+  id: string;
+  customer_id: string;
+  servicem8_job_uuid: string;
+  job_no: string;
+  description: string;
+  status: string;
+  updated: string;
+  created_at: string;
+  updated_at: string;
+  customer?: {
+    id: string;
+    name: string;
+    email: string;
+    servicem8_customer_uuid: string;
+  };
+  servicem8_data?: ServiceM8Job;
+};
 
 export async function GET(request: NextRequest) {
   const supabase = createClient(
@@ -24,6 +45,10 @@ export async function GET(request: NextRequest) {
   if (!profile || profile.role !== "admin") {
     return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   }
+
+  const startedAt = Date.now();
+  const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || undefined;
+  const userAgent = request.headers.get("user-agent") || undefined;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -58,17 +83,19 @@ export async function GET(request: NextRequest) {
       .from('jobs')
       .select(`
         id,
+        customer_id,
+        servicem8_job_uuid,
         job_no,
         description,
         status,
-        generated_job_total,
+        updated,
         created_at,
         updated_at,
-        customer_id,
         customers!inner(
           id,
           name,
-          email
+          email,
+          servicem8_customer_uuid
         )
       `);
 
@@ -128,23 +155,62 @@ export async function GET(request: NextRequest) {
 
     if (jobsError) throw jobsError;
 
-    // Transform the data to flatten customer info
-    const transformedJobs = jobs?.map(job => ({
-      id: job.id,
-      job_no: job.job_no,
-      description: job.description,
-      status: job.status,
-      generated_job_total: job.generated_job_total,
-      created_at: job.created_at,
-      updated_at: job.updated_at,
-      customer_id: job.customer_id,
-      customer_name: (Array.isArray(job.customers) ? job.customers[0]?.name : (job.customers as { name: string }).name) as string,
-      customer_email: (Array.isArray(job.customers) ? job.customers[0]?.email : (job.customers as { email: string }).email) as string
-    })) || [];
+    // Fetch ServiceM8 data for each job if API key is available
+    const serviceM8DataMap = new Map<string, ServiceM8Job>();
+    if (process.env.SERVICEM8_API_KEY && jobs) {
+      const serviceM8Client = new ServiceM8Client(process.env.SERVICEM8_API_KEY);
+      
+      await Promise.allSettled(
+        jobs.map(async (job) => {
+          if (job.servicem8_job_uuid) {
+            try {
+              const sm8Data = await serviceM8Client.getJobDetails(job.servicem8_job_uuid);
+              serviceM8DataMap.set(job.id, sm8Data);
+            } catch (error) {
+              console.error(`Failed to fetch ServiceM8 data for job ${job.id}:`, error);
+            }
+          }
+        })
+      );
+    }
 
-    return NextResponse.json({ jobs: transformedJobs });
+    // Transform the data to include ServiceM8 data
+    const transformedJobs: Job[] = jobs?.map(job => {
+      const customer = Array.isArray(job.customers) ? job.customers[0] : job.customers;
+      const serviceM8Data = serviceM8DataMap.get(job.id);
+
+      return {
+        id: job.id,
+        customer_id: job.customer_id,
+        servicem8_job_uuid: job.servicem8_job_uuid || '',
+        job_no: job.job_no || '',
+        description: job.description || '',
+        status: job.status || '',
+        updated: job.updated || '',
+        created_at: job.created_at,
+        updated_at: job.updated_at,
+        customer: customer ? {
+          id: customer.id,
+          name: customer.name,
+          email: customer.email,
+          servicem8_customer_uuid: customer.servicem8_customer_uuid || ''
+        } : undefined,
+        servicem8_data: serviceM8Data
+      };
+    }) || [];
+
+    const response = {
+      jobs: transformedJobs,
+      total: transformedJobs.length,
+      has_servicem8_data: !!process.env.SERVICEM8_API_KEY
+    };
+
+    await logSupabaseCall("/api/admin/jobs", "GET", { status, customer, customerId, dateRange, sortBy, refresh }, response, 200, Date.now() - startedAt, user.id, ip, userAgent);
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error('Admin jobs error:', error);
+    await logSupabaseCall("/api/admin/jobs", "GET", {}, { error: 'Failed to load jobs' }, 500, Date.now() - startedAt, user.id, ip, userAgent, (error as Error).message);
     return NextResponse.json({ error: 'Failed to load jobs' }, { status: 500 });
   }
 }

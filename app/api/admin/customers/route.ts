@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { InputSanitizationService, CustomerFormSchema } from "@/lib/input-sanitization";
 import { logSupabaseCall } from "@/lib/api-logging";
 import { logCustomerCreation } from "@/lib/audit-logging";
-import { ServiceM8Client, generateIdempotencyKey } from "@/lib/servicem8";
+import { ServiceM8Client, generateIdempotencyKey, ServiceM8ClientData } from "@/lib/servicem8";
 
 type CreateCustomerRequest = {
   name: string;
@@ -16,6 +16,282 @@ type CreateCustomerRequest = {
   generateCredentials?: boolean;
   sendWelcomeEmail?: boolean;
 };
+
+type Customer = {
+  id: string;
+  servicem8_customer_uuid: string;
+  name: string;
+  email: string;
+  phone: string;
+  created_at: string;
+  updated_at: string;
+  job_count: number;
+  last_login?: string;
+  status: 'active' | 'inactive' | 'banned';
+  servicem8_data?: ServiceM8ClientData;
+};
+
+export async function GET(request: NextRequest) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  
+  const user = await getAuthUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Check if user is admin
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile || profile.role !== "admin") {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+  }
+
+  const startedAt = Date.now();
+  const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || undefined;
+  const userAgent = request.headers.get("user-agent") || undefined;
+
+  try {
+    // Parse query parameters
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get('search') || '';
+    const status = searchParams.get('status') || 'all';
+    const dateRange = searchParams.get('dateRange') || 'all';
+    const limit = parseInt(searchParams.get('limit') || '50');
+    const offset = parseInt(searchParams.get('offset') || '0');
+    const syncWithServiceM8 = searchParams.get('sync') === 'true';
+
+    let customers: Customer[] = [];
+    let serviceM8Available = false;
+    let serviceM8Error: string | null = null;
+    
+    // Check if ServiceM8 API key is available
+    if (!process.env.SERVICEM8_API_KEY) {
+      console.log('⚠️ ServiceM8 API key not configured - using local data only');
+      serviceM8Error = 'ServiceM8 API key not configured';
+    } else {
+      serviceM8Available = true;
+      console.log('✅ ServiceM8 API key found - fetching from ServiceM8');
+      
+      // Always try to fetch from ServiceM8 when API key is available
+      try {
+        const serviceM8Client = new ServiceM8Client(process.env.SERVICEM8_API_KEY);
+        console.log(`📡 Fetching clients from ServiceM8 (limit: ${limit}, offset: ${offset})`);
+        
+        const serviceM8Clients = await serviceM8Client.listClients(limit, offset);
+        console.log(`✅ Retrieved ${serviceM8Clients.length} clients from ServiceM8`);
+        
+        // If sync is requested, update our local database
+        if (syncWithServiceM8) {
+          console.log('🔄 Syncing ServiceM8 clients with local database');
+          
+          // Sync ServiceM8 clients with our database
+          for (const sm8Client of serviceM8Clients) {
+            // Check if customer already exists in our database
+            const { data: existingCustomer } = await supabase
+              .from('customers')
+              .select('*')
+              .eq('servicem8_customer_uuid', sm8Client.uuid)
+              .single();
+
+            if (!existingCustomer) {
+              console.log(`➕ Creating new customer: ${sm8Client.name}`);
+              // Create new customer from ServiceM8 data
+              await supabase
+                .from('customers')
+                .insert({
+                  servicem8_customer_uuid: sm8Client.uuid,
+                  name: sm8Client.name,
+                  email: sm8Client.email || null,
+                  phone: sm8Client.mobile || null,
+                  created_at: sm8Client.date_created,
+                  updated_at: sm8Client.date_last_modified
+                });
+            } else {
+              console.log(`🔄 Updating existing customer: ${sm8Client.name}`);
+              // Update existing customer with latest ServiceM8 data
+              await supabase
+                .from('customers')
+                .update({
+                  name: sm8Client.name,
+                  email: sm8Client.email || null,
+                  phone: sm8Client.mobile || null,
+                  updated_at: sm8Client.date_last_modified
+                })
+                .eq('id', existingCustomer.id);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ ServiceM8 API error:', error);
+        serviceM8Error = error instanceof Error ? error.message : 'Unknown ServiceM8 error';
+        serviceM8Available = false;
+        // Continue with database query even if ServiceM8 fails
+      }
+    }
+
+    // Build base query for Supabase customers
+    let query = supabase
+      .from('customers')
+      .select(`
+        id,
+        servicem8_customer_uuid,
+        name,
+        email,
+        phone,
+        created_at,
+        updated_at
+      `);
+
+    // Apply search filter
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
+    }
+
+    // Apply date range filter
+    if (dateRange !== 'all') {
+      const now = new Date();
+      let startDate: Date;
+      
+      switch (dateRange) {
+        case 'today':
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+        case 'week':
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case 'month':
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        case 'year':
+          startDate = new Date(now.getFullYear(), 0, 1);
+          break;
+        default:
+          startDate = new Date(0);
+      }
+      
+      query = query.gte('created_at', startDate.toISOString());
+    }
+
+    // Apply pagination
+    query = query.range(offset, offset + limit - 1);
+
+    const { data: rawCustomers, error: customersError } = await query;
+
+    if (customersError) {
+      console.error('Error fetching customers:', customersError);
+      throw customersError;
+    }
+
+    // Get additional data for each customer
+    const customerIds = rawCustomers?.map(c => c.id) || [];
+    
+    // Get job counts
+    const { data: jobCounts } = await supabase
+      .from('jobs')
+      .select('customer_id')
+      .in('customer_id', customerIds);
+    
+    // Get user profiles for status
+    const { data: userProfiles } = await supabase
+      .from('user_profiles')
+      .select('customer_id, last_sign_in_at, is_active')
+      .in('customer_id', customerIds);
+
+    // Create lookup maps
+    const jobCountMap = new Map<string, number>();
+    jobCounts?.forEach(job => {
+      const count = jobCountMap.get(job.customer_id) || 0;
+      jobCountMap.set(job.customer_id, count + 1);
+    });
+
+    const profileMap = new Map<string, { last_sign_in_at?: string; is_active?: boolean }>();
+    userProfiles?.forEach(profile => {
+      profileMap.set(profile.customer_id, profile);
+    });
+
+    // Fetch ServiceM8 data for each customer if API key is available
+    const serviceM8DataMap = new Map<string, ServiceM8ClientData>();
+    if (process.env.SERVICEM8_API_KEY && rawCustomers) {
+      const serviceM8Client = new ServiceM8Client(process.env.SERVICEM8_API_KEY);
+      
+      await Promise.allSettled(
+        rawCustomers.map(async (customer) => {
+          if (customer.servicem8_customer_uuid) {
+            try {
+              const sm8Data = await serviceM8Client.getClient(customer.servicem8_customer_uuid);
+              serviceM8DataMap.set(customer.id, sm8Data);
+            } catch (error) {
+              console.error(`Failed to fetch ServiceM8 data for customer ${customer.id}:`, error);
+            }
+          }
+        })
+      );
+    }
+
+    // Transform data to match expected format
+    customers = (rawCustomers || []).map(customer => {
+      const jobCount = jobCountMap.get(customer.id) || 0;
+      const userProfile = profileMap.get(customer.id);
+      const serviceM8Data = serviceM8DataMap.get(customer.id);
+
+      // Determine status based on user profile
+      let customerStatus: 'active' | 'inactive' | 'banned' = 'inactive';
+      if (userProfile) {
+        if (userProfile.is_active === false) {
+          customerStatus = 'banned';
+        } else if (userProfile.is_active === true) {
+          customerStatus = 'active';
+        }
+      }
+
+      return {
+        id: customer.id,
+        servicem8_customer_uuid: customer.servicem8_customer_uuid || '',
+        name: customer.name || '',
+        email: customer.email || '',
+        phone: customer.phone || '',
+        created_at: customer.created_at,
+        updated_at: customer.updated_at,
+        job_count: jobCount,
+        last_login: userProfile?.last_sign_in_at || undefined,
+        status: customerStatus,
+        servicem8_data: serviceM8Data
+      };
+    });
+
+    // Apply status filter after transformation
+    const filteredCustomers = status === 'all' 
+      ? customers 
+      : customers.filter(customer => customer.status === status);
+
+    const response = {
+      customers: filteredCustomers,
+      total: filteredCustomers.length,
+      limit,
+      offset,
+      servicem8_status: {
+        available: serviceM8Available,
+        error: serviceM8Error,
+        synced: syncWithServiceM8 && serviceM8Available
+      }
+    };
+
+    await logSupabaseCall("/api/admin/customers", "GET", { search, status, dateRange, sync: syncWithServiceM8 }, response, 200, Date.now() - startedAt, user.id, ip, userAgent);
+
+    return NextResponse.json(response);
+  } catch (error) {
+    console.error('Error in GET /api/admin/customers:', error);
+    await logSupabaseCall("/api/admin/customers", "GET", {}, { error: 'Failed to fetch customers' }, 500, Date.now() - startedAt, user.id, ip, userAgent, (error as Error).message);
+    return NextResponse.json({ error: 'Failed to fetch customers' }, { status: 500 });
+  }
+}
 
 export async function POST(request: NextRequest) {
   const supabase = createClient(
@@ -54,7 +330,7 @@ export async function POST(request: NextRequest) {
     const rawBody = await request.json().catch(() => ({}));
     const flags = (rawBody || {}) as Partial<CreateCustomerRequest>;
 
-    const {
+    let {
       name,
       email,
       phone,
@@ -86,6 +362,8 @@ export async function POST(request: NextRequest) {
 
     let serviceM8Uuid = servicem8_customer_uuid;
 
+    let serviceM8CustomerData: ServiceM8ClientData | null = null;
+
     // If no ServiceM8 UUID provided, create customer in ServiceM8 first
     if (!serviceM8Uuid) {
       try {
@@ -94,7 +372,7 @@ export async function POST(request: NextRequest) {
           const serviceM8Client = new ServiceM8Client(apiKey);
           const idempotencyKey = generateIdempotencyKey('create-client', name);
           
-          const serviceM8Customer = await serviceM8Client.createClient({
+          serviceM8CustomerData = await serviceM8Client.createClient({
             name: name.trim(),
             email: email?.trim(),
             mobile: phone?.trim(),
@@ -102,7 +380,7 @@ export async function POST(request: NextRequest) {
             active: 1
           }, idempotencyKey);
           
-          serviceM8Uuid = serviceM8Customer.uuid;
+          serviceM8Uuid = serviceM8CustomerData.uuid;
         } else {
           // Fallback to mock UUID for development
           serviceM8Uuid = `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -111,6 +389,27 @@ export async function POST(request: NextRequest) {
         console.error('ServiceM8 customer creation failed:', error);
         await logSupabaseCall("/api/admin/customers", "POST", { name, email, phone }, { error: "Failed to create customer in ServiceM8", details: (error as Error).message }, 502, Date.now() - startedAt, user.id, ip, userAgent, (error as Error).message);
         return NextResponse.json({ error: "Failed to create customer in ServiceM8" }, { status: 502 });
+      }
+    } else {
+      // If ServiceM8 UUID was provided, fetch the existing customer data
+      try {
+        const apiKey = process.env.SERVICEM8_API_KEY;
+        if (apiKey) {
+          const serviceM8Client = new ServiceM8Client(apiKey);
+          serviceM8CustomerData = await serviceM8Client.getClient(serviceM8Uuid);
+          
+          // Update our local data with ServiceM8 data if available
+          if (serviceM8CustomerData) {
+            // Use ServiceM8 data as the source of truth
+            name = serviceM8CustomerData.name || name;
+            email = serviceM8CustomerData.email || email;
+            phone = serviceM8CustomerData.mobile || phone;
+            address = serviceM8CustomerData.address || address;
+          }
+        }
+      } catch (error) {
+        console.error('ServiceM8 customer fetch failed:', error);
+        // Continue with provided data if ServiceM8 fetch fails
       }
     }
 
@@ -161,7 +460,8 @@ export async function POST(request: NextRequest) {
     const responsePayload = { 
       customer: {
         ...customer,
-        tempPassword: createPortalAccess && generateCredentials ? tempPassword : undefined
+        tempPassword: createPortalAccess && generateCredentials ? tempPassword : undefined,
+        servicem8_data: serviceM8CustomerData
       }
     };
 
