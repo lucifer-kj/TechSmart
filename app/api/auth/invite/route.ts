@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/server";
-import { getInvitationService } from "@/lib/invitation-service";
 import { getEmailTriggerService } from '@/lib/email-triggers';
 import { z } from "zod";
+import { createClient } from "@supabase/supabase-js";
 
 const createInvitationSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -12,38 +12,37 @@ const createInvitationSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const user = await requireAdmin();
+    await requireAdmin();
     const body = await request.json();
     const validatedData = createInvitationSchema.parse(body);
 
-    const invitationService = await getInvitationService();
-    const result = await invitationService.createInvitation({
-      email: validatedData.email,
-      customerId: validatedData.customerId,
-      invitedBy: user.id,
-      expiresInDays: validatedData.expiresInDays,
-    });
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
 
-    if (result.error) {
-      return NextResponse.json(
-        { error: result.error.message },
-        { status: 400 }
-      );
+    const { data, error } = await supabase
+      .rpc('admin_create_portal_invitation', {
+        p_customer_id: validatedData.customerId,
+        p_email: validatedData.email,
+        p_expires_in_days: validatedData.expiresInDays,
+      });
+
+    if (error || !data || !Array.isArray(data) || data.length === 0) {
+      return NextResponse.json({ error: error?.message || 'Failed to create invitation' }, { status: 400 });
     }
 
-    // Send invitation email
+    const [{ invitation_id, raw_token, expires_at }] = data as Array<{ invitation_id: string; raw_token: string; expires_at: string }>;
+
     try {
-      if (result.data) {
-        const emailTriggerService = await getEmailTriggerService();
-        await emailTriggerService.sendInvitationEmail(result.data.id);
-      }
+      const emailTriggerService = await getEmailTriggerService();
+      await emailTriggerService.sendInvitationEmail(invitation_id, raw_token, expires_at);
     } catch (emailError) {
       console.error('Failed to send invitation email:', emailError);
-      // Don't fail the request if email fails
     }
 
     return NextResponse.json({ 
-      invitation: result.data,
+      invitation: { id: invitation_id, email: validatedData.email, expires_at },
       message: 'Invitation created and email sent successfully'
     });
 

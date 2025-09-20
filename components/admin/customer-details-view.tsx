@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { InvitationManagement } from "@/components/admin/invitation-management";
 
 interface Customer {
   id: string;
@@ -45,6 +46,10 @@ export function CustomerDetailsView({ customer, jobs, onStatusChange, onPortalAc
   const [banReason, setBanReason] = useState('');
   const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
   const [showAllJobs, setShowAllJobs] = useState(false);
+  const [showLinkUserModal, setShowLinkUserModal] = useState(false);
+  const [linkEmail, setLinkEmail] = useState('');
+  const [linking, setLinking] = useState(false);
+  const [linkError, setLinkError] = useState('');
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-AU', {
@@ -139,6 +144,27 @@ export function CustomerDetailsView({ customer, jobs, onStatusChange, onPortalAc
     setExpandedJobs(newExpanded);
   };
 
+  const linkExistingUser = async () => {
+    setLinkError('');
+    setLinking(true);
+    try {
+      const resp = await fetch(`/api/admin/customers/${customer.id}/link-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: linkEmail })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Failed to link user');
+      setShowLinkUserModal(false);
+      setLinkEmail('');
+      alert('User linked successfully');
+    } catch (e) {
+      setLinkError(e instanceof Error ? e.message : 'Failed to link user');
+    } finally {
+      setLinking(false);
+    }
+  };
+
   const displayJobs = showAllJobs ? jobs : jobs.slice(0, 5);
 
   return (
@@ -226,6 +252,13 @@ export function CustomerDetailsView({ customer, jobs, onStatusChange, onPortalAc
               >
                 ✅ Unban
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowLinkUserModal(true)}
+              >
+                🔗 Link Existing User
+              </Button>
             </div>
             {customer.address && (
               <div>
@@ -298,25 +331,10 @@ export function CustomerDetailsView({ customer, jobs, onStatusChange, onPortalAc
               </label>
             </div>
           </div>
-          
-          {customer.has_portal_access && (
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-              <h4 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
-                Portal Access Actions
-              </h4>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm">
-                  🔑 Reset Password
-                </Button>
-                <Button variant="outline" size="sm">
-                  ✉️ Send Login Link
-                </Button>
-                <Button variant="outline" size="sm">
-                  📧 Resend Welcome Email
-                </Button>
-              </div>
-            </div>
-          )}
+          <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-4">
+            <h4 className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">Invitations</h4>
+            <InvitationManagement customerId={customer.id} />
+          </div>
         </CardContent>
       </Card>
 
@@ -494,6 +512,40 @@ export function CustomerDetailsView({ customer, jobs, onStatusChange, onPortalAc
                   disabled={!banReason.trim()}
                 >
                   Ban Customer
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Link Existing User Modal */}
+      {showLinkUserModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <CardTitle>Link Existing User</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {linkError && (
+                <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{linkError}</div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  User Email
+                </label>
+                <input
+                  type="email"
+                  value={linkEmail}
+                  onChange={(e) => setLinkEmail(e.target.value)}
+                  placeholder="user@example.com"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
+                />
+              </div>
+              <div className="flex justify-end space-x-3 pt-2">
+                <Button variant="outline" onClick={() => setShowLinkUserModal(false)} disabled={linking}>Cancel</Button>
+                <Button onClick={linkExistingUser} disabled={linking || !linkEmail.includes('@')}>
+                  {linking ? 'Linking...' : 'Link User'}
                 </Button>
               </div>
             </CardContent>

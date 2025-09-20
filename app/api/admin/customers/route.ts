@@ -336,6 +336,30 @@ export async function POST(request: NextRequest) {
   const userAgent = request.headers.get("user-agent") || undefined;
 
   try {
+    // Hard fail early if env is misconfigured in runtime (common on Vercel)
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const envError = {
+        error: 'Server environment misconfigured',
+        details: {
+          NEXT_PUBLIC_SUPABASE_URL_present: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+          SUPABASE_SERVICE_ROLE_KEY_present: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
+        }
+      };
+      await logSupabaseCall(
+        "/api/admin/customers",
+        "POST",
+        {},
+        envError,
+        500,
+        Date.now() - startedAt,
+        user.id,
+        ip,
+        userAgent,
+        'env_misconfigured'
+      );
+      return NextResponse.json(envError, { status: 500 });
+    }
+
     // Sanitize and validate body
     const sanitization = await new InputSanitizationService().sanitizeRequestBody(request, CustomerFormSchema);
     if (!sanitization.isValid) {
@@ -476,7 +500,10 @@ export async function POST(request: NextRequest) {
 
         if (authError) {
           console.error('Auth user creation error:', authError);
-          throw new Error(`Failed to create auth user: ${authError.message}`);
+          return NextResponse.json(
+            { error: `Auth user creation failed: ${authError.message}`, code: authError.status ?? 400 },
+            { status: 400 }
+          );
         }
 
         if (authUser?.user) {
@@ -499,18 +526,21 @@ export async function POST(request: NextRequest) {
                 updated_at: new Date().toISOString()
               });
 
-            if (profileError) {
-              console.error('❌ Profile creation error:', profileError);
-              console.error('Profile creation details:', {
-                userId: authUser.user.id,
-                email: email,
-                customerId: customer.id,
-                error: profileError
-              });
-              // If profile creation fails, clean up the auth user
-              await supabase.auth.admin.deleteUser(authUser.user.id);
-              throw new Error(`Failed to create user profile: ${profileError.message}`);
-            }
+          if (profileError) {
+            console.error('❌ Profile creation error:', profileError);
+            console.error('Profile creation details:', {
+              userId: authUser.user.id,
+              email: email,
+              customerId: customer.id,
+              error: profileError
+            });
+            // If profile creation fails, clean up the auth user
+            await supabase.auth.admin.deleteUser(authUser.user.id);
+            return NextResponse.json(
+              { error: `Failed to create user profile: ${profileError.message}` },
+              { status: 500 }
+            );
+          }
 
             console.log(`✅ Created auth user and profile for customer: ${name} (${email})`);
           } catch (error) {

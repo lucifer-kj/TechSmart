@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/server';
-import { getInvitationService } from '@/lib/invitation-service';
 import { z } from 'zod';
+import { createClient } from "@supabase/supabase-js";
+import { getEmailTriggerService } from '@/lib/email-triggers';
 
 const createInvitationSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -11,29 +12,41 @@ const createInvitationSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireAdmin();
+    await requireAdmin();
     const body = await request.json();
     const validatedData = createInvitationSchema.parse(body);
 
-    const invitationService = await getInvitationService();
-    const result = await invitationService.createInvitation({
-      email: validatedData.email,
-      customerId: validatedData.customerId,
-      invitedBy: user.id,
-      expiresInDays: validatedData.expiresInDays,
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { data, error } = await supabase.rpc('admin_create_portal_invitation', {
+      p_customer_id: validatedData.customerId,
+      p_email: validatedData.email,
+      p_expires_in_days: validatedData.expiresInDays,
     });
 
-    if (result.error) {
+    if (error || !data || !Array.isArray(data) || data.length === 0) {
       return NextResponse.json(
-        { message: result.error.message },
+        { message: error?.message || 'Failed to create invitation' },
         { status: 400 }
       );
+    }
+
+    const [{ invitation_id, raw_token, expires_at }] = data as Array<{ invitation_id: string; raw_token: string; expires_at: string }>;
+
+    try {
+      const emailTriggerService = await getEmailTriggerService();
+      await emailTriggerService.sendInvitationEmail(invitation_id, raw_token, expires_at);
+    } catch (emailError) {
+      console.error('Failed to send invitation email:', emailError);
     }
 
     return NextResponse.json(
       { 
         message: 'Invitation created successfully',
-        invitation: result.data 
+        invitation: { id: invitation_id, email: validatedData.email, expires_at }
       },
       { status: 201 }
     );
@@ -59,28 +72,31 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await requireAdmin();
+    await requireAdmin();
     const { searchParams } = new URL(request.url);
     const customerId = searchParams.get('customerId');
 
-    const invitationService = await getInvitationService();
-    
-    let result;
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    let query = supabase.from('portal_invitations').select('*').order('created_at', { ascending: false });
     if (customerId) {
-      result = await invitationService.getCustomerInvitations(customerId);
-    } else {
-      result = await invitationService.getUserInvitations(user.id);
+      query = query.eq('customer_id', customerId);
     }
 
-    if (result.error) {
+    const { data, error } = await query;
+
+    if (error) {
       return NextResponse.json(
-        { message: result.error.message },
+        { message: error.message },
         { status: 500 }
       );
     }
 
     return NextResponse.json(
-      { invitations: result.data },
+      { invitations: data },
       { status: 200 }
     );
 

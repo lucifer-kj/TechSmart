@@ -9,6 +9,11 @@ declare namespace NodeJS {
     SERVICEM8_API_KEY?: string;
     SERVICEM8_CUSTOMER_UUID?: string; // Optional - will be auto-detected from API key
     SERVICEM8_WEBHOOK_SECRET?: string;
+
+    // Feature flags for portal replacement rollout (Section 09)
+    FEATURES_INVITATIONS_ENABLED?: string; // "true" | "false"
+    FEATURES_PASSWORDLESS_CUSTOMER_LOGIN?: string; // "true" | "false"
+    FEATURES_ADMIN_LINK_EXISTING_USER?: string; // "true" | "false"
   }
 }
 

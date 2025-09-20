@@ -1,25 +1,30 @@
 import { NextResponse } from "next/server";
-import { getInvitationService } from "@/lib/invitation-service";
+import { createClient } from "@supabase/supabase-js";
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const token = searchParams.get("token");
-    
-    if (!token) {
-      return NextResponse.json({ error: "token required" }, { status: 400 });
-    }
 
-    const invitationService = await getInvitationService();
-    const result = await invitationService.verifyInvitationToken(token);
-    
-    if (result.error || !result.data) {
+    // With hashed storage, we cannot validate raw token without auth.
+    if (token) {
       return NextResponse.json({ valid: false }, { status: 200 });
     }
-    
+
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    const { data, error } = await supabase.rpc('portal_invitation_preflight');
+    if (error || !data || !Array.isArray(data) || data.length === 0) {
+      return NextResponse.json({ valid: false }, { status: 200 });
+    }
+
+    const [{ invitation_id, customer_id, expires_at }] = data as Array<{ invitation_id: string; customer_id: string; expires_at: string }>;
     return NextResponse.json({ 
-      valid: true, 
-      invitation: result.data 
+      valid: true,
+      invitation: { id: invitation_id, customer_id, expires_at }
     }, { status: 200 });
 
   } catch (error) {
