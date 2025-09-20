@@ -169,7 +169,9 @@ export async function POST(
 
     if (!customer.email) {
       return NextResponse.json({ 
-        error: "Customer must have an email address to create user access" 
+        error: "Customer must have an email address to create user access",
+        details: "Please add an email address to the customer record first, or update the ServiceM8 client with an email address.",
+        action_required: "add_email"
       }, { status: 400 });
     }
 

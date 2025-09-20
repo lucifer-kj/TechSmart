@@ -84,7 +84,43 @@ export function CustomerListTable({
         })
       });
 
-      if (!response.ok) throw new Error('Failed to create user access');
+      if (!response.ok) {
+        const errorData = await response.json();
+        
+        if (errorData.action_required === 'add_email') {
+          // Prompt user to add email address
+          const email = prompt(`This customer needs an email address to create portal access.\n\nPlease enter an email address:`);
+          
+          if (email && email.includes('@')) {
+            try {
+              // Update customer email
+              const emailResponse = await fetch(`/api/admin/customers/${customerId}/email`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                  email: email,
+                  updateServiceM8: true 
+                })
+              });
+
+              if (emailResponse.ok) {
+                // Retry portal access creation
+                await handleCreateUserAccess(customerId);
+                return;
+              } else {
+                const emailError = await emailResponse.json();
+                alert(`Failed to update email: ${emailError.error}`);
+              }
+            } catch (emailError) {
+              console.error('Email update error:', emailError);
+              alert('Failed to update customer email address');
+            }
+          }
+        } else {
+          throw new Error(errorData.error || 'Failed to create user access');
+        }
+        return;
+      }
       
       const result = await response.json();
       
@@ -98,7 +134,7 @@ export function CustomerListTable({
       await onCustomerUpdate();
     } catch (error) {
       console.error('Create user access error:', error);
-      alert('Failed to create user access');
+      alert(`Failed to create user access: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(null);
     }

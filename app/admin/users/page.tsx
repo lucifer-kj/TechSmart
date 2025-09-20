@@ -137,19 +137,29 @@ export default function AdminUsersPage() {
   };
 
   const handleCreateUserFromServiceM8 = async (client: ServiceM8Client) => {
-    if (!client.email) {
-      alert('ServiceM8 client does not have an email address');
-      return;
-    }
-
     setCreatingUser(client.uuid);
+    
     try {
+      // If client doesn't have email, prompt for one
+      let email = client.email;
+      if (!email) {
+        const promptedEmail = prompt(`"${client.name}" doesn't have an email address.\n\nPlease enter an email address for this ServiceM8 client:`);
+        
+        if (!promptedEmail || !promptedEmail.includes('@')) {
+          alert('Valid email address is required to create portal access');
+          setCreatingUser(null);
+          return;
+        }
+        
+        email = promptedEmail;
+      }
+
       const response = await fetch('/api/admin/users/create-from-servicem8', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           servicem8_customer_uuid: client.uuid,
-          email: client.email,
+          email: email,
           generateCredentials: true,
           sendWelcomeEmail: false
         })
@@ -326,7 +336,7 @@ export default function AdminUsersPage() {
                     <div className="flex-1">
                       <div className="font-medium text-gray-900 dark:text-gray-100">{client.name}</div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">
-                        Email: {client.email || 'No email'}
+                        Email: {client.email ? client.email : '⚠️ No email (will prompt when creating access)'}
                       </div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">
                         Phone: {client.mobile || 'No phone'}
@@ -340,9 +350,10 @@ export default function AdminUsersPage() {
                         variant="primary"
                         size="sm"
                         onClick={() => handleCreateUserFromServiceM8(client)}
-                        disabled={creatingUser === client.uuid || !client.email}
+                        disabled={creatingUser === client.uuid}
                       >
-                        {creatingUser === client.uuid ? 'Creating...' : 'Create Portal Access'}
+                        {creatingUser === client.uuid ? 'Creating...' : 
+                         !client.email ? 'Create Access (Add Email)' : 'Create Portal Access'}
                       </Button>
                     </div>
                   </div>
