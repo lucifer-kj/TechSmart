@@ -2,6 +2,26 @@ import { getAuthUser } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+// Helper function to generate secure temporary password
+function generateSecurePassword(length: number = 12): string {
+  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+  let password = '';
+  
+  // Ensure at least one of each type
+  password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)];
+  password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)];
+  password += '0123456789'[Math.floor(Math.random() * 10)];
+  password += '!@#$%^&*'[Math.floor(Math.random() * 8)];
+  
+  // Fill the rest randomly
+  for (let i = 4; i < length; i++) {
+    password += charset[Math.floor(Math.random() * charset.length)];
+  }
+  
+  // Shuffle the password
+  return password.split('').sort(() => Math.random() - 0.5).join('');
+}
+
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ customerId: string }> }
@@ -94,6 +114,157 @@ export async function PUT(
     console.error('Portal access update error:', error);
     return NextResponse.json({ 
       error: 'Failed to update portal access' 
+    }, { status: 500 });
+  }
+}
+
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ customerId: string }> }
+) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  
+  const user = await getAuthUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Check if user is admin
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile || profile.role !== "admin") {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+  }
+
+  try {
+    const { customerId } = await params;
+    const body = await request.json();
+    const { createPortalAccess, generateCredentials } = body;
+
+    if (!createPortalAccess) {
+      return NextResponse.json({ 
+        error: "createPortalAccess must be true" 
+      }, { status: 400 });
+    }
+
+    // Get customer details
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .select('id, email, name')
+      .eq('id', customerId)
+      .single();
+
+    if (customerError || !customer) {
+      return NextResponse.json({ 
+        error: "Customer not found" 
+      }, { status: 404 });
+    }
+
+    if (!customer.email) {
+      return NextResponse.json({ 
+        error: "Customer must have an email address to create user access" 
+      }, { status: 400 });
+    }
+
+    // Check if user already has access
+    const { data: existingProfile } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .eq('customer_id', customerId)
+      .single();
+
+    if (existingProfile) {
+      return NextResponse.json({ 
+        error: "Customer already has user access" 
+      }, { status: 409 });
+    }
+
+    let tempPassword: string | null = null;
+    let authUser = null;
+
+    if (generateCredentials) {
+      // Generate temporary password
+      tempPassword = generateSecurePassword();
+
+      // Create Supabase Auth user
+      try {
+        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+          email: customer.email,
+          password: tempPassword,
+          email_confirm: true,
+          user_metadata: {
+            full_name: customer.name,
+            customer_id: customerId
+          }
+        });
+
+        if (authError) throw authError;
+        authUser = authData.user;
+      } catch (authError) {
+        console.error('Auth user creation error:', authError);
+        return NextResponse.json({ 
+          error: 'Failed to create authentication account' 
+        }, { status: 500 });
+      }
+    }
+
+    // Create user profile
+    const profileData = {
+      id: authUser?.id,
+      customer_id: customerId,
+      email: customer.email,
+      full_name: customer.name,
+      role: 'customer',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    // Only include id if we have an auth user
+    if (!authUser?.id) {
+      delete (profileData as Record<string, unknown>).id;
+    }
+
+    const { error: profileError } = await supabase
+      .from('user_profiles')
+      .insert(profileData);
+
+    if (profileError) {
+      console.error('Profile creation error:', profileError);
+      
+      // If profile creation fails but auth user was created, clean up
+      if (authUser?.id) {
+        await supabase.auth.admin.deleteUser(authUser.id);
+      }
+      
+      throw profileError;
+    }
+
+    const response: {
+      message: string;
+      has_portal_access: boolean;
+      tempPassword?: string;
+    } = { 
+      message: 'User access created successfully',
+      has_portal_access: true
+    };
+
+    if (tempPassword) {
+      response.tempPassword = tempPassword;
+    }
+
+    return NextResponse.json(response);
+  } catch (error) {
+    console.error('User access creation error:', error);
+    return NextResponse.json({ 
+      error: 'Failed to create user access' 
     }, { status: 500 });
   }
 }

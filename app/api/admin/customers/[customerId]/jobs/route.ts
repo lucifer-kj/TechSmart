@@ -32,7 +32,7 @@ export async function GET(
     // Verify customer exists
     const { data: customer, error: customerError } = await supabase
       .from('customers')
-      .select('id')
+      .select('id, servicem8_customer_uuid')
       .eq('id', customerId)
       .single();
 
@@ -47,6 +47,7 @@ export async function GET(
       .from('jobs')
       .select(`
         id,
+        servicem8_job_uuid,
         job_no,
         description,
         status,
@@ -59,7 +60,72 @@ export async function GET(
 
     if (jobsError) throw jobsError;
 
-    return NextResponse.json({ jobs: jobs || [] });
+    // Get customer documents
+    const { data: documents, error: documentsError } = await supabase
+      .from('documents')
+      .select(`
+        id,
+        job_id,
+        type,
+        title,
+        url,
+        version,
+        created_at
+      `)
+      .eq('customer_id', customerId)
+      .order('created_at', { ascending: false });
+
+    if (documentsError) {
+      console.warn('Failed to load documents:', documentsError);
+    }
+
+    // Get customer quotes
+    const { data: quotes, error: quotesError } = await supabase
+      .from('quotes')
+      .select(`
+        id,
+        company_uuid,
+        job_id,
+        servicem8_job_uuid,
+        status,
+        approved_at,
+        signature,
+        notes,
+        created_at,
+        updated_at
+      `)
+      .eq('customer_id', customerId)
+      .order('created_at', { ascending: false });
+
+    if (quotesError) {
+      console.warn('Failed to load quotes:', quotesError);
+    }
+
+    // Get customer payments
+    const { data: payments, error: paymentsError } = await supabase
+      .from('payments')
+      .select(`
+        id,
+        job_id,
+        amount_cents,
+        currency,
+        status,
+        paid_at,
+        created_at
+      `)
+      .eq('customer_id', customerId)
+      .order('created_at', { ascending: false });
+
+    if (paymentsError) {
+      console.warn('Failed to load payments:', paymentsError);
+    }
+
+    return NextResponse.json({ 
+      jobs: jobs || [], 
+      documents: documents || [], 
+      quotes: quotes || [],
+      payments: payments || []
+    });
   } catch (error) {
     console.error('Customer jobs error:', error);
     return NextResponse.json({ error: 'Failed to load customer jobs' }, { status: 500 });

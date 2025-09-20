@@ -1,7 +1,7 @@
 import { getAuthUser } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { SyncService } from "@/lib/sync-service";
+import { ServiceM8Client } from "@/lib/servicem8";
 
 export async function GET(request: NextRequest) {
   const supabase = createClient(
@@ -48,35 +48,75 @@ export async function GET(request: NextRequest) {
       // Sync with ServiceM8 if requested
       if (syncWithServiceM8) {
         try {
-          console.log('🔄 Syncing documents from ServiceM8...');
+          console.log('🔄 Syncing documents from ServiceM8 job materials...');
           
-          // Get all customers with ServiceM8 UUIDs
-          const { data: customersWithUUIDs } = await supabase
-            .from('customers')
-            .select('id, servicem8_customer_uuid')
-            .not('servicem8_customer_uuid', 'is', null);
+          const serviceM8Client = new ServiceM8Client(process.env.SERVICEM8_API_KEY!);
           
-          if (customersWithUUIDs && customersWithUUIDs.length > 0) {
-            console.log(`📋 Found ${customersWithUUIDs.length} customers with ServiceM8 UUIDs`);
+          // Get all job materials from ServiceM8
+          const jobMaterials = await serviceM8Client.getAllJobMaterials();
+          console.log(`📋 Retrieved ${jobMaterials.length} job materials from ServiceM8`);
+          
+          if (jobMaterials.length > 0) {
+            // Get jobs to map job UUIDs to customer IDs
+            const jobUuids = [...new Set(jobMaterials.map(m => m.job_uuid))];
+            const { data: jobs } = await supabase
+              .from('jobs')
+              .select('id, customer_id, servicem8_job_uuid')
+              .in('servicem8_job_uuid', jobUuids);
             
-            // Sync documents for each customer (limit to prevent timeout)
-            const syncPromises = customersWithUUIDs.slice(0, 10).map(async (customer) => {
-              try {
-                const sync = new SyncService(process.env.SERVICEM8_API_KEY!);
-                await sync.syncCustomerData(customer.servicem8_customer_uuid);
-                console.log(`✅ Synced documents for customer ${customer.id}`);
-              } catch (error) {
-                console.warn(`⚠️ Failed to sync documents for customer ${customer.id}:`, error);
+            const jobMap = new Map(jobs?.map(job => [job.servicem8_job_uuid, job]) || []);
+            
+            // Transform job materials to document format
+            const documentsToUpsert = jobMaterials.map(material => {
+              const job = jobMap.get(material.job_uuid);
+              
+              return {
+                servicem8_attachment_uuid: material.uuid,
+                file_name: material.name,
+                file_type: 'material', // Indicate this is from job materials
+                file_size: 0,
+                attachment_source: 'Job Material',
+                type: 'material',
+                title: material.name,
+                url: null, // Job materials don't have direct URLs
+                date_created_sm8: material.edit_date,
+                created_at: new Date().toISOString(),
+                customer_id: job?.customer_id,
+                job_id: job?.id,
+                // Store additional material data as metadata
+                metadata: {
+                  quantity: material.quantity,
+                  price: material.price,
+                  cost: material.cost,
+                  displayed_amount: material.displayed_amount,
+                  material_uuid: material.material_uuid,
+                  sort_order: material.sort_order
+                }
+              };
+            }).filter(doc => doc.customer_id && doc.job_id); // Only include materials with valid job mappings
+            
+            console.log(`📋 Preparing to sync ${documentsToUpsert.length} job materials as documents`);
+            
+            // Upsert documents to database
+            if (documentsToUpsert.length > 0) {
+              const { error: upsertError } = await supabase
+                .from('documents')
+                .upsert(documentsToUpsert, {
+                  onConflict: 'servicem8_attachment_uuid'
+                });
+              
+              if (upsertError) {
+                console.error('❌ Error upserting documents:', upsertError);
+                throw upsertError;
               }
-            });
-            
-            await Promise.all(syncPromises);
-            console.log('✅ ServiceM8 document sync completed');
+              
+              console.log(`✅ Successfully synced ${documentsToUpsert.length} job materials as documents`);
+            }
           } else {
-            console.log('⚠️ No customers with ServiceM8 UUIDs found');
+            console.log('⚠️ No job materials found in ServiceM8');
           }
         } catch (error) {
-          console.error('❌ ServiceM8 document sync error:', error);
+          console.error('❌ ServiceM8 job materials sync error:', error);
           serviceM8Error = error instanceof Error ? error.message : 'Unknown ServiceM8 error';
           serviceM8Available = false;
           // Continue with database query even if ServiceM8 fails

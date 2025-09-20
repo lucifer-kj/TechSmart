@@ -181,18 +181,40 @@ export class CustomerPortalAPI {
         jobId: options?.jobId
       });
 
-      return documents.map(doc => ({
-        uuid: String(doc.servicem8_attachment_uuid || doc.uuid),
-        related_object_uuid: String(doc.job_id),
-        file_name: String(doc.file_name || doc.title),
-        file_type: String(doc.file_type),
-        attachment_source: this.normalizeAttachmentSource(String(doc.attachment_source || doc.type)),
-        date_created: String(doc.date_created_sm8 || doc.created_at),
-        file_size: Number(doc.file_size) || 0,
-        downloadUrl: String(doc.url || `/api/servicem8/attachments/${doc.servicem8_attachment_uuid}`),
-        previewUrl: this.getPreviewUrlFromType(String(doc.file_type)),
-        category: this.categorizeDocumentFromType(String(doc.type || doc.attachment_source))
-      }));
+      return documents.map(doc => {
+        const metadata = (doc.metadata as Record<string, unknown>) || {};
+        return {
+          uuid: String(doc.servicem8_attachment_uuid || doc.uuid),
+          edit_date: String(doc.date_created_sm8 || doc.created_at),
+          active: Number(metadata.active) || 1,
+          attachment_name: String(doc.file_name || doc.title),
+          file_type: String(doc.file_type),
+          photo_width: String(metadata.photo_width || ''),
+          photo_height: String(metadata.photo_height || ''),
+          attachment_source: String(doc.attachment_source || doc.type),
+          lng: Number(metadata.lng) || 0,
+          lat: Number(metadata.lat) || 0,
+          tags: String(metadata.tags || ''),
+          extracted_info: String(metadata.extracted_info || ''),
+          is_favourite: String(metadata.is_favourite || '0'),
+          metadata: Boolean(metadata.metadata) || false,
+          created_by_staff_uuid: String(metadata.created_by_staff_uuid || ''),
+          timestamp: String(metadata.timestamp || doc.created_at),
+          related_object: String(metadata.related_object || 'job'),
+          related_object_uuid: String(doc.job_id),
+          
+          // Legacy fields for backward compatibility
+          file_name: String(doc.file_name || doc.title),
+          file_size: Number(doc.file_size) || 0,
+          date_created: String(doc.date_created_sm8 || doc.created_at),
+          url: String(doc.url || `/api/servicem8/attachments/${doc.servicem8_attachment_uuid}`),
+          
+          // DocumentWithMetadata specific fields
+          downloadUrl: String(doc.url || `/api/servicem8/attachments/${doc.servicem8_attachment_uuid}`),
+          previewUrl: this.getPreviewUrlFromType(String(doc.file_type)),
+          category: this.categorizeDocumentFromType(String(doc.type || doc.attachment_source))
+        };
+      });
     } catch (error) {
       console.error('Cached documents error:', error);
       return [];

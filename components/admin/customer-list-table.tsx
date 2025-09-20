@@ -17,6 +17,8 @@ interface Customer {
   job_count: number;
   last_login?: string;
   status: 'active' | 'inactive' | 'banned';
+  has_user_access: boolean;
+  user_email?: string;
 }
 
 interface CustomerListTableProps {
@@ -65,6 +67,38 @@ export function CustomerListTable({
     } catch (error) {
       console.error('Status update error:', error);
       alert('Failed to update customer status');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleCreateUserAccess = async (customerId: string) => {
+    setLoading(customerId);
+    try {
+      const response = await fetch(`/api/admin/customers/${customerId}/portal-access`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          createPortalAccess: true,
+          generateCredentials: true 
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to create user access');
+      
+      const result = await response.json();
+      
+      // Show success message with temporary password if provided
+      if (result.tempPassword) {
+        alert(`User access created! Temporary password: ${result.tempPassword}\nPlease share this with the customer securely.`);
+      } else {
+        alert('User access created successfully! The customer will receive an invitation email.');
+      }
+      
+      await onCustomerUpdate();
+    } catch (error) {
+      console.error('Create user access error:', error);
+      alert('Failed to create user access');
     } finally {
       setLoading(null);
     }
@@ -141,6 +175,9 @@ export function CustomerListTable({
               Status
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              User Access
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               Jobs
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -191,6 +228,26 @@ export function CustomerListTable({
               <td className="px-6 py-4 whitespace-nowrap">
                 {getStatusBadge(customer.status)}
               </td>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <div className="flex flex-col">
+                  {customer.has_user_access ? (
+                    <>
+                      <Badge variant="success" className="bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100 mb-1">
+                        Has Access
+                      </Badge>
+                      {customer.user_email && (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          {customer.user_email}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <Badge variant="secondary" className="bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100">
+                      No Access
+                    </Badge>
+                  )}
+                </div>
+              </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                 {customer.job_count}
               </td>
@@ -207,6 +264,16 @@ export function CustomerListTable({
                       View
                     </Button>
                   </Link>
+                  {!customer.has_user_access && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleCreateUserAccess(customer.id)}
+                      disabled={loading === customer.id}
+                    >
+                      {loading === customer.id ? 'Creating...' : 'Create Access'}
+                    </Button>
+                  )}
                   <select
                     value={customer.status}
                     onChange={(e) => handleStatusChange(customer.id, e.target.value as 'active' | 'inactive' | 'banned')}

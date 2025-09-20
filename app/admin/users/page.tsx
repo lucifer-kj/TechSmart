@@ -15,6 +15,9 @@ type AdminUser = {
   last_login?: string;
   customer_id?: string;
   customer_name?: string;
+  servicem8_customer_uuid?: string;
+  job_count?: number;
+  last_activity?: string;
 };
 
 type UserFilters = {
@@ -99,6 +102,11 @@ export default function AdminUsersPage() {
       console.error('User status update error:', error);
       alert('Failed to update user status');
     }
+  };
+
+  const handleViewUserData = (customerId: string) => {
+    // Navigate to customer details page
+    window.location.href = `/admin/customers/${customerId}`;
   };
 
   const filteredUsers = users.filter(user => {
@@ -295,9 +303,21 @@ export default function AdminUsersPage() {
                       {getStatusBadge(user.is_active)}
                     </div>
                     {user.customer_name && (
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                        Customer: {user.customer_name}
-                      </p>
+                      <div className="mt-1 space-y-1">
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Customer: {user.customer_name}
+                        </p>
+                        {user.servicem8_customer_uuid && (
+                          <p className="text-xs text-gray-500 dark:text-gray-500">
+                            ServiceM8 ID: {user.servicem8_customer_uuid}
+                          </p>
+                        )}
+                        {user.job_count !== undefined && (
+                          <p className="text-xs text-gray-500 dark:text-gray-500">
+                            Jobs: {user.job_count}
+                          </p>
+                        )}
+                      </div>
                     )}
                     <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
                       <span>Created: {formatDate(user.created_at)}</span>
@@ -315,6 +335,15 @@ export default function AdminUsersPage() {
                     <Button variant="outline" size="sm">
                       🔑 Reset Password
                     </Button>
+                    {user.customer_id && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewUserData(user.customer_id!)}
+                      >
+                        📊 View Data
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}

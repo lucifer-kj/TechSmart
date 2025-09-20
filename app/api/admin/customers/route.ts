@@ -29,6 +29,8 @@ type Customer = {
   last_login?: string;
   status: 'active' | 'inactive' | 'banned';
   servicem8_data?: ServiceM8ClientData;
+  has_user_access: boolean;
+  user_email?: string;
 };
 
 export async function GET(request: NextRequest) {
@@ -209,10 +211,10 @@ export async function GET(request: NextRequest) {
       .select('customer_id')
       .in('customer_id', customerIds);
     
-    // Get user profiles for status
+    // Get user profiles for status and access info
     const { data: userProfiles } = await supabase
       .from('user_profiles')
-      .select('customer_id, last_sign_in_at, is_active')
+      .select('customer_id, last_sign_in_at, is_active, email')
       .in('customer_id', customerIds);
 
     // Create lookup maps
@@ -222,7 +224,7 @@ export async function GET(request: NextRequest) {
       jobCountMap.set(job.customer_id, count + 1);
     });
 
-    const profileMap = new Map<string, { last_sign_in_at?: string; is_active?: boolean }>();
+    const profileMap = new Map<string, { last_sign_in_at?: string; is_active?: boolean; email?: string }>();
     userProfiles?.forEach(profile => {
       profileMap.set(profile.customer_id, profile);
     });
@@ -273,7 +275,9 @@ export async function GET(request: NextRequest) {
         job_count: jobCount,
         last_login: userProfile?.last_sign_in_at || undefined,
         status: customerStatus,
-        servicem8_data: serviceM8Data
+        servicem8_data: serviceM8Data,
+        has_user_access: !!userProfile,
+        user_email: userProfile?.email
       };
     });
 

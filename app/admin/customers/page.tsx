@@ -18,6 +18,7 @@ type Customer = {
   job_count: number;
   last_login?: string;
   status: 'active' | 'inactive' | 'banned';
+  has_user_access: boolean;
 };
 
 type CustomerFilters = {

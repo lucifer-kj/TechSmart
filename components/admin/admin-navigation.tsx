@@ -44,10 +44,10 @@ export function AdminNavigation() {
       current: pathname.startsWith("/admin/documents")
     },
     {
-      name: "Payments",
-      href: "/admin/payments",
-      icon: "💰",
-      current: pathname.startsWith("/admin/payments")
+      name: "Quotes",
+      href: "/admin/quotes",
+      icon: "📋",
+      current: pathname.startsWith("/admin/quotes")
     },
     {
       name: "Reports",

@@ -42,7 +42,8 @@ export async function GET(request: Request) {
         customer_id,
         customers!left(
           id,
-          name
+          name,
+          servicem8_customer_uuid
         )
       `);
 
@@ -73,10 +74,26 @@ export async function GET(request: Request) {
       console.warn('Failed to fetch auth users:', authError);
     }
 
+    // Get job counts for customers
+    const customerIds = userProfiles?.filter(p => p.customer_id).map(p => p.customer_id!) || [];
+    let jobCounts = new Map<string, number>();
+    
+    if (customerIds.length > 0) {
+      const { data: jobCountsData } = await supabase
+        .from('jobs')
+        .select('customer_id')
+        .in('customer_id', customerIds);
+      
+      jobCountsData?.forEach(job => {
+        const count = jobCounts.get(job.customer_id) || 0;
+        jobCounts.set(job.customer_id, count + 1);
+      });
+    }
+
     // Transform the data
     const transformedUsers = userProfiles?.map(profile => {
       const authUser = authUsers?.users?.find(au => au.id === profile.id);
-      const customer = Array.isArray(profile.customers) ? profile.customers[0] : (profile.customers as { id: string; name?: string } | null | undefined) || null;
+      const customer = Array.isArray(profile.customers) ? profile.customers[0] : (profile.customers as { id: string; name?: string; servicem8_customer_uuid?: string } | null | undefined) || null;
       return {
         id: profile.id,
         email: authUser?.email || 'No email',
@@ -85,7 +102,10 @@ export async function GET(request: Request) {
         created_at: profile.created_at,
         last_login: profile.last_login,
         customer_id: profile.customer_id,
-        customer_name: customer?.name
+        customer_name: customer?.name,
+        servicem8_customer_uuid: customer?.servicem8_customer_uuid,
+        job_count: profile.customer_id ? (jobCounts.get(profile.customer_id) || 0) : undefined,
+        last_activity: authUser?.last_sign_in_at
       };
     }) || [];
 

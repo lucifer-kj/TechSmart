@@ -7,20 +7,31 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoadingCard } from "@/components/ui/loading";
 
-type DocumentApproval = {
+type DocumentItem = {
   id: string;
-  document_id: string;
-  document_name: string;
-  document_type: string;
-  job_id: string;
-  job_number: string;
+  uuid: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  attachment_source: string;
+  type: string;
+  url?: string;
+  date_created: string;
   customer_id: string;
   customer_name: string;
-  status: 'pending' | 'approved' | 'rejected';
-  submitted_at: string;
-  reviewed_at?: string;
-  reviewed_by?: string;
-  review_notes?: string;
+  customer_email: string;
+  job_id: string;
+  job_number: string;
+  job_description: string;
+  job_status: string;
+  download_url?: string;
+  preview_url?: string;
+  
+  // Job material specific fields
+  quantity?: string;
+  price?: string;
+  cost?: string;
+  displayed_amount?: string;
 };
 
 type DocumentFilters = {
@@ -30,7 +41,7 @@ type DocumentFilters = {
 };
 
 export default function AdminDocumentsPage() {
-  const [documents, setDocuments] = useState<DocumentApproval[]>([]);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<DocumentFilters>({
@@ -80,18 +91,18 @@ export default function AdminDocumentsPage() {
     loadDocuments(isFirstLoad);
   }, [loadDocuments]); // ✅ react-hooks/exhaustive-deps resolved
 
-  // Realtime: listen to acknowledgment changes which can affect approval lists
-  useRealtime<DocumentApproval>({ table: 'document_acknowledgments' }, ({ eventType, new: newRow, old }) => {
+  // Realtime: listen to document changes
+  useRealtime<DocumentItem>({ table: 'documents' }, ({ eventType, new: newRow, old }) => {
     setDocuments(prev => {
       if (eventType === 'INSERT' && newRow) {
-        return [newRow as unknown as DocumentApproval, ...prev];
+        return [newRow as unknown as DocumentItem, ...prev];
       }
       if (eventType === 'UPDATE' && newRow) {
-        const updated = newRow as unknown as DocumentApproval;
+        const updated = newRow as unknown as DocumentItem;
         return prev.map(d => d.id === updated.id ? updated : d);
       }
       if (eventType === 'DELETE' && old) {
-        const deleted = old as unknown as DocumentApproval;
+        const deleted = old as unknown as DocumentItem;
         return prev.filter(d => d.id !== deleted.id);
       }
       return prev;
@@ -108,20 +119,12 @@ export default function AdminDocumentsPage() {
     });
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return <Badge variant="warning" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100">Pending</Badge>;
-      case 'approved':
-        return <Badge variant="success" className="bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">Approved</Badge>;
-      case 'rejected':
-        return <Badge variant="destructive" className="bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100">Rejected</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  };
 
-  const getDocumentTypeBadge = (type: string) => {
+  const getDocumentTypeBadge = (type: string, source?: string) => {
+    if (source === 'Job Material' || type === 'material') {
+      return <Badge variant="outline" className="bg-orange-100 text-orange-800 dark:bg-orange-800 dark:text-orange-100">Material</Badge>;
+    }
+    
     switch (type.toLowerCase()) {
       case 'quote':
         return <Badge variant="outline" className="bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100">Quote</Badge>;
@@ -129,39 +132,21 @@ export default function AdminDocumentsPage() {
         return <Badge variant="outline" className="bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">Invoice</Badge>;
       case 'contract':
         return <Badge variant="outline" className="bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-100">Contract</Badge>;
+      case 'attachment':
+        return <Badge variant="outline" className="bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100">Attachment</Badge>;
       default:
         return <Badge variant="outline">{type}</Badge>;
     }
   };
 
-  const handleDocumentAction = async (documentId: string, action: 'approve' | 'reject', notes?: string) => {
-    try {
-      const response = await fetch(`/api/admin/documents/${documentId}/review`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          action,
-          notes: notes || undefined
-        })
-      });
-
-      if (!response.ok) throw new Error(`Failed to ${action} document`);
-      
-      // Reload documents
-      await loadDocuments();
-    } catch (error) {
-      console.error('Document action error:', error);
-      alert(`Failed to ${action} document`);
-    }
-  };
 
   const filteredDocuments = documents.filter(doc => {
-    const matchesStatus = !filters.status || doc.status === filters.status;
-    const matchesType = !filters.documentType || doc.document_type.toLowerCase() === filters.documentType.toLowerCase();
+    const matchesType = !filters.documentType || doc.type.toLowerCase() === filters.documentType.toLowerCase() || doc.attachment_source.toLowerCase().includes(filters.documentType.toLowerCase());
     const matchesCustomer = !filters.customer || 
-      doc.customer_name.toLowerCase().includes(filters.customer.toLowerCase());
+      doc.customer_name.toLowerCase().includes(filters.customer.toLowerCase()) ||
+      doc.customer_email.toLowerCase().includes(filters.customer.toLowerCase());
     
-    return matchesStatus && matchesType && matchesCustomer;
+    return matchesType && matchesCustomer;
   });
 
   if (loading) {
@@ -194,15 +179,15 @@ export default function AdminDocumentsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-            Document Approvals
+            Documents & Materials
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Review and approve customer documents
+            Manage job documents and materials from ServiceM8
           </p>
         </div>
         <div className="mt-4 sm:mt-0 flex gap-2">
           <Button variant="outline" size="sm">
-            📊 Approval Report
+            📊 Materials Report
           </Button>
           <Button 
             variant="outline" 
@@ -239,12 +224,12 @@ export default function AdminDocumentsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
-              Pending Review
+              Materials
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
-              {documents.filter(d => d.status === 'pending').length}
+            <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+              {documents.filter(d => d.type === 'material').length}
             </div>
           </CardContent>
         </Card>
@@ -252,25 +237,25 @@ export default function AdminDocumentsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
-              Approved
+              Attachments
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+              {documents.filter(d => d.type === 'attachment').length}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+              Total Value
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-              {documents.filter(d => d.status === 'approved').length}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
-              Rejected
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-              {documents.filter(d => d.status === 'rejected').length}
+              ${documents.reduce((sum, doc) => sum + (parseFloat(doc.displayed_amount || '0') || 0), 0).toFixed(2)}
             </div>
           </CardContent>
         </Card>
@@ -309,6 +294,8 @@ export default function AdminDocumentsPage() {
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
               >
                 <option value="">All Types</option>
+                <option value="material">Job Materials</option>
+                <option value="attachment">Attachments</option>
                 <option value="quote">Quote</option>
                 <option value="invoice">Invoice</option>
                 <option value="contract">Contract</option>
@@ -357,49 +344,41 @@ export default function AdminDocumentsPage() {
                 <div key={doc.id} className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                   <div className="flex-1">
                     <div className="flex items-center space-x-3">
-                      <div className="font-medium text-gray-900 dark:text-gray-100">{doc.document_name}</div>
-                      {getDocumentTypeBadge(doc.document_type)}
-                      {getStatusBadge(doc.status)}
+                      <div className="font-medium text-gray-900 dark:text-gray-100">{doc.file_name}</div>
+                      {getDocumentTypeBadge(doc.type, doc.attachment_source)}
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                       Customer: {doc.customer_name} • Job: #{doc.job_number}
                     </p>
                     <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
-                      <span>Submitted: {formatDate(doc.submitted_at)}</span>
-                      {doc.reviewed_at && <span>Reviewed: {formatDate(doc.reviewed_at)}</span>}
-                      {doc.review_notes && <span>Notes: {doc.review_notes}</span>}
+                      <span>Created: {formatDate(doc.date_created)}</span>
+                      <span>Source: {doc.attachment_source}</span>
+                      {doc.quantity && <span>Qty: {doc.quantity}</span>}
+                      {doc.displayed_amount && <span>Amount: ${doc.displayed_amount}</span>}
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    {doc.status === 'pending' && (
+                    {doc.type === 'material' ? (
                       <>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => handleDocumentAction(doc.id, 'approve')}
-                        >
-                          ✅ Approve
+                        <Button variant="outline" size="sm">
+                          📊 Details
                         </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => {
-                            const notes = prompt('Enter rejection reason (optional):');
-                            if (notes !== null) {
-                              handleDocumentAction(doc.id, 'reject', notes);
-                            }
-                          }}
-                        >
-                          ❌ Reject
+                        {doc.price && (
+                          <div className="flex items-center px-3 py-1 bg-green-100 dark:bg-green-900 rounded text-sm font-medium text-green-800 dark:text-green-200">
+                            ${doc.displayed_amount || doc.price}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <Button variant="outline" size="sm">
+                          👁️ View
+                        </Button>
+                        <Button variant="outline" size="sm">
+                          📥 Download
                         </Button>
                       </>
                     )}
-                    <Button variant="outline" size="sm">
-                      👁️ View
-                    </Button>
-                    <Button variant="outline" size="sm">
-                      📥 Download
-                    </Button>
                   </div>
                 </div>
               ))}

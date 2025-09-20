@@ -48,22 +48,52 @@ export interface ServiceM8JobMaterial {
   uuid: string;
   job_uuid: string;
   name: string;
-  description: string;
-  qty: number;
-  cost_ex_tax: number;
-  total_ex_tax: number;
-  total_inc_tax: number;
-  date_created: string;
+  description?: string;
+  quantity: string; // ServiceM8 returns as string
+  price: string; // ServiceM8 returns as string
+  cost: string; // ServiceM8 returns as string
+  displayed_amount: string;
+  displayed_cost: string;
+  displayed_amount_is_tax_inclusive: string;
+  tax_rate_uuid?: string;
+  material_uuid?: string;
+  active: number;
+  sort_order: string;
+  edit_date?: string;
+  
+  // Legacy fields for backward compatibility
+  qty?: number; // We'll map quantity to this
+  cost_ex_tax?: number; // We'll map cost to this
+  total_ex_tax?: number; // We'll calculate this
+  total_inc_tax?: number; // We'll map displayed_amount to this
+  date_created?: string; // We'll map edit_date to this
 }
 
 export interface ServiceM8Attachment {
   uuid: string;
-  related_object_uuid: string;
-  file_name: string;
+  edit_date: string;
+  active: number;
+  attachment_name: string;
   file_type: string;
-  attachment_source: 'Quote' | 'Invoice' | 'Photo' | 'Document';
-  date_created: string;
-  file_size: number;
+  photo_width?: string;
+  photo_height?: string;
+  attachment_source: string;
+  lng: number;
+  lat: number;
+  tags: string;
+  extracted_info: string;
+  is_favourite: string;
+  metadata: boolean;
+  created_by_staff_uuid: string;
+  timestamp: string;
+  related_object: string;
+  related_object_uuid: string;
+  
+  // Legacy fields for backward compatibility
+  file_name?: string; // We'll map attachment_name to this
+  file_size?: number; // ServiceM8 doesn't provide this
+  date_created?: string; // We'll map timestamp to this
+  url?: string; // Requires separate API call
 }
 
 export interface ServiceM8JobActivity {
@@ -263,8 +293,18 @@ export class ServiceM8Client {
     return this.getWithCache<ServiceM8JobMaterial[]>(`sm8:jobmaterials:${jobUuid}`, `/jobmaterial.json?$filter=job_uuid eq '${jobUuid}'`, 300);
   }
 
+  // Get all job materials for documents management
+  async getAllJobMaterials(): Promise<ServiceM8JobMaterial[]> {
+    return this.get<ServiceM8JobMaterial[]>('/jobmaterial.json');
+  }
+
   async getJobAttachments(jobUuid: string): Promise<ServiceM8Attachment[]> {
     return this.getWithCache<ServiceM8Attachment[]>(`sm8:attachments:${jobUuid}`, `/attachment.json?$filter=related_object_uuid eq '${jobUuid}'`, 300);
+  }
+
+  // Get all attachments for quotes management
+  async getAllAttachments(): Promise<ServiceM8Attachment[]> {
+    return this.get<ServiceM8Attachment[]>('/attachment.json');
   }
 
   async downloadAttachment(attachmentUuid: string): Promise<Blob> {
