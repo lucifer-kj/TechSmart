@@ -270,7 +270,7 @@ export const CustomerFormSchema: Record<string, SanitizationConfig> = {
   },
   email: {
     type: 'email',
-    required: true,
+    required: false,
     maxLength: 255
   },
   phone: {
@@ -283,6 +283,16 @@ export const CustomerFormSchema: Record<string, SanitizationConfig> = {
     required: false,
     maxLength: 500,
     sanitizeHtml: true
+  },
+  password: {
+    type: 'string',
+    required: false,
+    maxLength: 255
+  },
+  confirmPassword: {
+    type: 'string',
+    required: false,
+    maxLength: 255
   }
 };
 

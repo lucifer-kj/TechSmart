@@ -19,6 +19,8 @@ interface CustomerFormData {
   createPortalAccess: boolean;
   generateCredentials: boolean;
   sendWelcomeEmail: boolean;
+  password: string;
+  confirmPassword: string;
 }
 
 export function CustomerCreationForm({ onCustomerCreated, onError, onLoading }: CustomerCreationFormProps) {
@@ -30,7 +32,9 @@ export function CustomerCreationForm({ onCustomerCreated, onError, onLoading }: 
     servicem8_customer_uuid: '',
     createPortalAccess: true,
     generateCredentials: true,
-    sendWelcomeEmail: true
+    sendWelcomeEmail: true,
+    password: '',
+    confirmPassword: ''
   });
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
@@ -77,6 +81,21 @@ export function CustomerCreationForm({ onCustomerCreated, onError, onLoading }: 
       errors.phone = 'Please enter a valid phone number';
     }
 
+    // Password validation when creating portal access
+    if (formData.createPortalAccess) {
+      if (!formData.password) {
+        errors.password = 'Password is required when creating portal access';
+      } else if (formData.password.length < 8) {
+        errors.password = 'Password must be at least 8 characters long';
+      } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(formData.password)) {
+        errors.password = 'Password must contain at least one uppercase letter, one lowercase letter, and one number';
+      }
+
+      if (formData.password !== formData.confirmPassword) {
+        errors.confirmPassword = 'Passwords do not match';
+      }
+    }
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -101,9 +120,15 @@ export function CustomerCreationForm({ onCustomerCreated, onError, onLoading }: 
             phone: formData.phone,
             address: formData.address,
             createPortalAccess: formData.createPortalAccess,
-            generateCredentials: formData.generateCredentials
+            generateCredentials: formData.generateCredentials,
+            password: formData.password,
+            confirmPassword: formData.confirmPassword
           }
-        : formData;
+        : {
+            ...formData,
+            password: formData.password,
+            confirmPassword: formData.confirmPassword
+          };
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -306,23 +331,56 @@ export function CustomerCreationForm({ onCustomerCreated, onError, onLoading }: 
               </label>
 
               {formData.createPortalAccess && (
-                <div className="ml-6 space-y-2">
-                  <label className="flex items-center space-x-3">
-                    <input
-                      type="checkbox"
-                      checked={formData.generateCredentials}
-                      onChange={(e) => handleInputChange('generateCredentials', e.target.checked)}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
+                <div className="ml-6 space-y-4">
+                  <div className="space-y-3">
                     <div>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Generate temporary credentials
-                      </span>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Create a temporary password that the customer can use for first login
-                      </p>
+                      <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Password <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        id="password"
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) => handleInputChange('password', e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 ${
+                          validationErrors.password ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                        }`}
+                        placeholder="Enter password"
+                      />
+                      {validationErrors.password && (
+                        <p className="text-sm text-red-500 mt-1">{validationErrors.password}</p>
+                      )}
                     </div>
-                  </label>
+
+                    <div>
+                      <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Confirm Password <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        id="confirmPassword"
+                        type="password"
+                        value={formData.confirmPassword}
+                        onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 ${
+                          validationErrors.confirmPassword ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                        }`}
+                        placeholder="Confirm password"
+                      />
+                      {validationErrors.confirmPassword && (
+                        <p className="text-sm text-red-500 mt-1">{validationErrors.confirmPassword}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Password Requirements:</h4>
+                    <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                      <li>• At least 8 characters long</li>
+                      <li>• At least one uppercase letter (A-Z)</li>
+                      <li>• At least one lowercase letter (a-z)</li>
+                      <li>• At least one number (0-9)</li>
+                    </ul>
+                  </div>
 
                   <label className="flex items-center space-x-3">
                     <input

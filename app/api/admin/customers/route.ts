@@ -15,6 +15,8 @@ type CreateCustomerRequest = {
   createPortalAccess?: boolean;
   generateCredentials?: boolean;
   sendWelcomeEmail?: boolean;
+  password?: string;
+  confirmPassword?: string;
 };
 
 type Customer = {
@@ -358,9 +360,13 @@ export async function POST(request: NextRequest) {
     };
 
     const {
-      servicem8_customer_uuid
+      servicem8_customer_uuid,
+      password,
+      confirmPassword
     } = {
-      servicem8_customer_uuid: (flags.servicem8_customer_uuid as string | undefined) ?? undefined
+      servicem8_customer_uuid: (flags.servicem8_customer_uuid as string | undefined) ?? undefined,
+      password: (sanitized.password as string | undefined) ?? undefined,
+      confirmPassword: (sanitized.confirmPassword as string | undefined) ?? undefined
     };
 
     // Note: sendWelcomeEmail flag is available for future email functionality
@@ -442,18 +448,22 @@ export async function POST(request: NextRequest) {
     if (customerError) throw customerError;
 
     // Always create portal access when email is provided (default behavior)
-    let tempPassword: string | null = null;
+    let userPassword: string | null = null;
     let authUserId: string | null = null;
-    
+
     if (email) {
       try {
-        // Always generate secure temporary password by default
-        tempPassword = generateSecurePassword();
+        // Use provided password or generate one if not provided
+        if (password && password === confirmPassword) {
+          userPassword = password;
+        } else {
+          userPassword = generateSecurePassword();
+        }
 
         // Create Supabase Auth user
         const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
           email: email,
-          password: tempPassword,
+          password: userPassword,
           email_confirm: true, // Auto-confirm email for admin-created users
           user_metadata: {
             name: name,
@@ -502,18 +512,18 @@ export async function POST(request: NextRequest) {
       // Email handling is out of scope of this endpoint per project rules
     }
 
-    const responsePayload = { 
+    const responsePayload = {
       customer: {
         ...customer,
-        tempPassword: authUserId ? tempPassword : undefined,
+        tempPassword: authUserId ? userPassword : undefined,
         servicem8_data: serviceM8CustomerData,
         auth_user_id: authUserId,
         portal_access_created: !!authUserId,
         login_instructions: authUserId ? {
           email: email,
-          password: tempPassword,
+          password: userPassword,
           login_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/login`,
-          note: "Customer can now login with these credentials"
+          note: password ? "Customer can login with the provided password" : "Customer can login with the generated temporary password"
         } : undefined
       }
     };
