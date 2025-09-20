@@ -23,7 +23,7 @@ interface PaymentStatusProps {
   loadingInvoice?: string | null;
 }
 
-export function PaymentStatus({ payments, onPayNow, onViewInvoice, processingPayment, loadingInvoice: _loadingInvoice }: PaymentStatusProps) {
+export function PaymentStatus({ payments, onPayNow, onViewInvoice, processingPayment }: PaymentStatusProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-AU', {
       style: 'currency',

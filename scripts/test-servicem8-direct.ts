@@ -7,6 +7,15 @@
 
 const { ServiceM8Client } = require('../lib/servicem8');
 
+// Define the client type to avoid TypeScript errors
+interface ServiceM8ClientData {
+  uuid: string;
+  name: string;
+  email: string;
+  mobile: string;
+  active: number;
+}
+
 async function testDirectServiceM8() {
   console.log('🧪 Direct ServiceM8 API Test\n');
   
@@ -33,7 +42,7 @@ async function testDirectServiceM8() {
     
     if (clients.length > 0) {
       console.log('📋 First few clients:');
-      clients.slice(0, 3).forEach((client, index) => {
+      clients.slice(0, 3).forEach((client: ServiceM8ClientData, index: number) => {
         console.log(`   ${index + 1}. ${client.name}`);
         console.log(`      UUID: ${client.uuid}`);
         console.log(`      Email: ${client.email || 'No email'}`);
