@@ -83,51 +83,62 @@ export async function GET(request: NextRequest) {
       try {
         const serviceM8Client = new ServiceM8Client(process.env.SERVICEM8_API_KEY);
         console.log(`📡 Fetching clients from ServiceM8 (limit: ${limit}, offset: ${offset})`);
+        console.log(`🔑 Using API key: ${process.env.SERVICEM8_API_KEY?.substring(0, 10)}...`);
+        console.log(`🌐 ServiceM8 API URL: https://api.servicem8.com/api_1.0/company.json`);
         
         const serviceM8Clients = await serviceM8Client.listClients(limit, offset);
         console.log(`✅ Retrieved ${serviceM8Clients.length} clients from ServiceM8`);
         
-        // If sync is requested, update our local database
-        if (syncWithServiceM8) {
-          console.log('🔄 Syncing ServiceM8 clients with local database');
-          
-          // Sync ServiceM8 clients with our database
-          for (const sm8Client of serviceM8Clients) {
-            // Check if customer already exists in our database
-            const { data: existingCustomer } = await supabase
-              .from('customers')
-              .select('*')
-              .eq('servicem8_customer_uuid', sm8Client.uuid)
-              .single();
+        // Log first client for debugging
+        if (serviceM8Clients.length > 0) {
+          console.log(`📋 Sample client:`, {
+            uuid: serviceM8Clients[0].uuid,
+            name: serviceM8Clients[0].name,
+            email: serviceM8Clients[0].email
+          });
+        }
+        
+        // Always sync ServiceM8 clients with our database to ensure data is up to date
+        console.log('🔄 Syncing ServiceM8 clients with local database');
+        
+        // Sync ServiceM8 clients with our database
+        for (const sm8Client of serviceM8Clients) {
+          // Check if customer already exists in our database
+          const { data: existingCustomer } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('servicem8_customer_uuid', sm8Client.uuid)
+            .single();
 
-            if (!existingCustomer) {
-              console.log(`➕ Creating new customer: ${sm8Client.name}`);
-              // Create new customer from ServiceM8 data
-              await supabase
-                .from('customers')
-                .insert({
-                  servicem8_customer_uuid: sm8Client.uuid,
-                  name: sm8Client.name,
-                  email: sm8Client.email || null,
-                  phone: sm8Client.mobile || null,
-                  created_at: sm8Client.date_created,
-                  updated_at: sm8Client.date_last_modified
-                });
-            } else {
-              console.log(`🔄 Updating existing customer: ${sm8Client.name}`);
-              // Update existing customer with latest ServiceM8 data
-              await supabase
-                .from('customers')
-                .update({
-                  name: sm8Client.name,
-                  email: sm8Client.email || null,
-                  phone: sm8Client.mobile || null,
-                  updated_at: sm8Client.date_last_modified
-                })
-                .eq('id', existingCustomer.id);
-            }
+          if (!existingCustomer) {
+            console.log(`➕ Creating new customer: ${sm8Client.name}`);
+            // Create new customer from ServiceM8 data
+            await supabase
+              .from('customers')
+              .insert({
+                servicem8_customer_uuid: sm8Client.uuid,
+                name: sm8Client.name,
+                email: sm8Client.email || null,
+                phone: sm8Client.mobile || null,
+                created_at: sm8Client.date_created,
+                updated_at: sm8Client.date_last_modified
+              });
+          } else {
+            console.log(`🔄 Updating existing customer: ${sm8Client.name}`);
+            // Update existing customer with latest ServiceM8 data
+            await supabase
+              .from('customers')
+              .update({
+                name: sm8Client.name,
+                email: sm8Client.email || null,
+                phone: sm8Client.mobile || null,
+                updated_at: sm8Client.date_last_modified
+              })
+              .eq('id', existingCustomer.id);
           }
         }
+        
+        console.log(`✅ Successfully synced ${serviceM8Clients.length} clients to database`);
       } catch (error) {
         console.error('❌ ServiceM8 API error:', error);
         serviceM8Error = error instanceof Error ? error.message : 'Unknown ServiceM8 error';

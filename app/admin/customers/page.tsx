@@ -38,24 +38,43 @@ export default function AdminCustomersPage() {
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
 
   useEffect(() => {
-    loadCustomers();
+    // Force sync on first load to get fresh ServiceM8 data
+    const isFirstLoad = customers.length === 0 && !loading && !error;
+    loadCustomers(isFirstLoad);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
-  const loadCustomers = async () => {
+  const loadCustomers = async (forceSync = false) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (filters.search) params.append('search', filters.search);
       if (filters.status !== 'all') params.append('status', filters.status);
       if (filters.dateRange !== 'all') params.append('dateRange', filters.dateRange);
+      
+      // Force sync with ServiceM8 on first load or when explicitly requested
+      if (forceSync) {
+        params.append('sync', 'true');
+      }
 
       const response = await fetch(`/api/admin/customers?${params.toString()}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Failed to load customers");
       const data = await response.json();
+      
+      console.log('🔍 API Response:', data);
+      
       setCustomers(data.customers || []);
+      
+      // Log ServiceM8 status for debugging
+      if (data.servicem8_status) {
+        console.log('📊 ServiceM8 Status:', data.servicem8_status);
+        if (!data.servicem8_status.available) {
+          console.warn('⚠️ ServiceM8 not available:', data.servicem8_status.error);
+        }
+      }
     } catch (e: unknown) {
       setError((e as Error).message || "Error loading customers");
+      console.error('❌ Load customers error:', e);
     } finally {
       setLoading(false);
     }
@@ -64,6 +83,11 @@ export default function AdminCustomersPage() {
   const handleCreateCustomer = () => {
     // Navigate to customer creation page
     window.location.href = '/admin/customers/new';
+  };
+
+  const handleSyncServiceM8 = () => {
+    console.log('🔄 Manual ServiceM8 sync requested');
+    loadCustomers(true);
   };
 
   const handleBulkAction = async (action: 'ban' | 'activate' | 'export') => {
@@ -141,6 +165,9 @@ export default function AdminCustomersPage() {
           </p>
         </div>
         <div className="mt-4 sm:mt-0 flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleSyncServiceM8} disabled={loading}>
+            {loading ? '🔄 Syncing...' : '🔄 Sync ServiceM8'}
+          </Button>
           <Button variant="outline" size="sm">
             📊 Export All
           </Button>
