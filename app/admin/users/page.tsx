@@ -20,6 +20,17 @@ type AdminUser = {
   last_activity?: string;
 };
 
+type ServiceM8Client = {
+  uuid: string;
+  name: string;
+  email: string;
+  mobile: string;
+  address: string;
+  active: number;
+  date_created: string;
+  date_last_modified: string;
+};
+
 type UserFilters = {
   role: string;
   status: string;
@@ -28,8 +39,11 @@ type UserFilters = {
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [serviceM8Clients, setServiceM8Clients] = useState<ServiceM8Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [creatingUser, setCreatingUser] = useState<string | null>(null);
+  const [showServiceM8Clients, setShowServiceM8Clients] = useState(false);
   const [filters, setFilters] = useState<UserFilters>({
     role: '',
     status: '',
@@ -55,9 +69,27 @@ export default function AdminUsersPage() {
     }
   }, [filters]);
 
+  const loadServiceM8Clients = useCallback(async () => {
+    try {
+      const response = await fetch('/api/servicem8/customers', { cache: "no-store" });
+      if (!response.ok) throw new Error("Failed to load ServiceM8 clients");
+      const data = await response.json();
+      setServiceM8Clients(data.clients || []);
+    } catch (e: unknown) {
+      console.error('Failed to load ServiceM8 clients:', e);
+      setServiceM8Clients([]);
+    }
+  }, []);
+
   useEffect(() => {
     loadUsers();
-  }, [loadUsers]); // ✅ react-hooks/exhaustive-deps resolved
+  }, [loadUsers]);
+
+  useEffect(() => {
+    if (showServiceM8Clients) {
+      loadServiceM8Clients();
+    }
+  }, [showServiceM8Clients, loadServiceM8Clients]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-AU', {
@@ -104,6 +136,50 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleCreateUserFromServiceM8 = async (client: ServiceM8Client) => {
+    if (!client.email) {
+      alert('ServiceM8 client does not have an email address');
+      return;
+    }
+
+    setCreatingUser(client.uuid);
+    try {
+      const response = await fetch('/api/admin/users/create-from-servicem8', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          servicem8_customer_uuid: client.uuid,
+          email: client.email,
+          generateCredentials: true,
+          sendWelcomeEmail: false
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 409) {
+          alert(`Customer "${client.name}" already has portal access`);
+        } else {
+          throw new Error(data.error || 'Failed to create user account');
+        }
+        return;
+      }
+
+      alert(`User account created successfully for ${client.name}!\n\nLogin credentials:\nEmail: ${data.login_instructions.email}\nPassword: ${data.login_instructions.password}\n\nPlease share these credentials securely with the customer.`);
+      
+      // Reload users to show the new user
+      await loadUsers();
+      // Reload ServiceM8 clients to update the list
+      await loadServiceM8Clients();
+    } catch (error) {
+      console.error('Create user error:', error);
+      alert(`Failed to create user account: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setCreatingUser(null);
+    }
+  };
+
   const handleViewUserData = (customerId: string) => {
     // Navigate to customer details page
     window.location.href = `/admin/customers/${customerId}`;
@@ -119,6 +195,11 @@ export default function AdminUsersPage() {
       user.customer_name?.toLowerCase().includes(filters.search.toLowerCase());
     
     return matchesRole && matchesStatus && matchesSearch;
+  });
+
+  // Filter ServiceM8 clients that don't already have portal access
+  const clientsWithoutAccess = serviceM8Clients.filter(client => {
+    return !users.some(user => user.servicem8_customer_uuid === client.uuid);
   });
 
   if (loading) {
@@ -158,6 +239,13 @@ export default function AdminUsersPage() {
           </p>
         </div>
         <div className="mt-4 sm:mt-0 flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setShowServiceM8Clients(!showServiceM8Clients)}
+          >
+            {showServiceM8Clients ? '📋 Hide ServiceM8 Clients' : '👥 ServiceM8 Clients'}
+          </Button>
           <Button variant="outline" size="sm">
             📊 User Report
           </Button>
@@ -219,6 +307,51 @@ export default function AdminUsersPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ServiceM8 Clients Without Portal Access */}
+      {showServiceM8Clients && (
+        <Card>
+          <CardHeader>
+            <CardTitle>ServiceM8 Clients Without Portal Access ({clientsWithoutAccess.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {clientsWithoutAccess.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-gray-500">All ServiceM8 clients have portal access</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {clientsWithoutAccess.map((client) => (
+                  <div key={client.uuid} className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-900 dark:text-gray-100">{client.name}</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        Email: {client.email || 'No email'}
+                      </div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        Phone: {client.mobile || 'No phone'}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-500">
+                        ServiceM8 ID: {client.uuid}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => handleCreateUserFromServiceM8(client)}
+                        disabled={creatingUser === client.uuid || !client.email}
+                      >
+                        {creatingUser === client.uuid ? 'Creating...' : 'Create Portal Access'}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card>

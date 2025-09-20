@@ -189,6 +189,7 @@ export async function POST(
     let tempPassword: string | null = null;
     let authUser = null;
 
+    // Always generate credentials and create auth user for proper user access
     if (generateCredentials) {
       // Generate temporary password
       tempPassword = generateSecurePassword();
@@ -201,11 +202,18 @@ export async function POST(
           email_confirm: true,
           user_metadata: {
             full_name: customer.name,
-            customer_id: customerId
+            customer_id: customerId,
+            role: 'customer'
           }
         });
 
-        if (authError) throw authError;
+        if (authError) {
+          console.error('Auth user creation error:', authError);
+          return NextResponse.json({ 
+            error: `Failed to create authentication account: ${authError.message}` 
+          }, { status: 500 });
+        }
+        
         authUser = authData.user;
       } catch (authError) {
         console.error('Auth user creation error:', authError);
@@ -213,38 +221,61 @@ export async function POST(
           error: 'Failed to create authentication account' 
         }, { status: 500 });
       }
+    } else {
+      // If not generating credentials, we still need to create a profile without auth user
+      // This is for cases where credentials are managed separately
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .insert({
+          customer_id: customerId,
+          email: customer.email,
+          full_name: customer.name,
+          role: 'customer',
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+        return NextResponse.json({ 
+          error: `Failed to create user profile: ${profileError.message}` 
+        }, { status: 500 });
+      }
+
+      return NextResponse.json({ 
+        message: 'User access created successfully (no credentials generated)',
+        has_portal_access: true
+      });
     }
 
-    // Create user profile
-    const profileData = {
-      id: authUser?.id,
-      customer_id: customerId,
-      email: customer.email,
-      full_name: customer.name,
-      role: 'customer',
-      is_active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    // Only include id if we have an auth user
-    if (!authUser?.id) {
-      delete (profileData as Record<string, unknown>).id;
-    }
-
+    // Create user profile with auth user ID
     const { error: profileError } = await supabase
       .from('user_profiles')
-      .insert(profileData);
+      .insert({
+        id: authUser.id,
+        customer_id: customerId,
+        email: customer.email,
+        full_name: customer.name,
+        role: 'customer',
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
 
     if (profileError) {
       console.error('Profile creation error:', profileError);
       
-      // If profile creation fails but auth user was created, clean up
-      if (authUser?.id) {
+      // If profile creation fails, clean up the auth user
+      try {
         await supabase.auth.admin.deleteUser(authUser.id);
+      } catch (cleanupError) {
+        console.error('Failed to cleanup auth user:', cleanupError);
       }
       
-      throw profileError;
+      return NextResponse.json({ 
+        error: `Failed to create user profile: ${profileError.message}` 
+      }, { status: 500 });
     }
 
     const response: {
