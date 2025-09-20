@@ -229,13 +229,18 @@ CREATE POLICY "user_profiles_select_policy" ON user_profiles
 CREATE POLICY "user_profiles_update_policy" ON user_profiles
   FOR UPDATE
   USING (
-    is_admin() OR 
+    is_admin() OR
     id = auth.uid()
   )
   WITH CHECK (
-    is_admin() OR 
+    is_admin() OR
     id = auth.uid()
   );
+
+-- Only admins can insert new user profiles
+CREATE POLICY "user_profiles_insert_policy" ON user_profiles
+  FOR INSERT
+  WITH CHECK (is_admin());
 
 -- CUSTOMER INVITATIONS POLICIES
 -- Admins can see all invitations, customers can see invitations for their email

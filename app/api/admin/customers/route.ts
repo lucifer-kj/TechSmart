@@ -460,7 +460,9 @@ export async function POST(request: NextRequest) {
           userPassword = generateSecurePassword();
         }
 
-        // Create Supabase Auth user
+        console.log(`🔐 Creating Supabase Auth user for: ${email} with password: ${password ? '[PROVIDED]' : '[GENERATED]'}`);
+
+        // Create Supabase Auth user using service role key
         const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
           email: email,
           password: userPassword,
@@ -479,29 +481,44 @@ export async function POST(request: NextRequest) {
 
         if (authUser?.user) {
           authUserId = authUser.user.id;
-          
-          // Create user profile linked to the auth user
-          const { error: profileError } = await supabase
-            .from('user_profiles')
-            .insert({
-              id: authUser.user.id, // Use the auth user ID
-              email: email,
-              full_name: name,
-              customer_id: customer.id,
-              role: 'customer',
-              is_active: true,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            });
 
-          if (profileError) {
-            console.error('Profile creation error:', profileError);
-            // If profile creation fails, clean up the auth user
+          try {
+            console.log(`📝 Creating user profile for auth user: ${authUser.user.id}`);
+
+            // Create user profile linked to the auth user
+            const { error: profileError } = await supabase
+              .from('user_profiles')
+              .insert({
+                id: authUser.user.id, // Use the auth user ID
+                email: email,
+                full_name: name,
+                customer_id: customer.id,
+                role: 'customer',
+                is_active: true,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              });
+
+            if (profileError) {
+              console.error('❌ Profile creation error:', profileError);
+              console.error('Profile creation details:', {
+                userId: authUser.user.id,
+                email: email,
+                customerId: customer.id,
+                error: profileError
+              });
+              // If profile creation fails, clean up the auth user
+              await supabase.auth.admin.deleteUser(authUser.user.id);
+              throw new Error(`Failed to create user profile: ${profileError.message}`);
+            }
+
+            console.log(`✅ Created auth user and profile for customer: ${name} (${email})`);
+          } catch (error) {
+            console.error('❌ Error during profile creation:', error);
+            // Clean up auth user if profile creation fails
             await supabase.auth.admin.deleteUser(authUser.user.id);
-            throw new Error(`Failed to create user profile: ${profileError.message}`);
+            throw error;
           }
-          
-          console.log(`✅ Created auth user and profile for customer: ${name} (${email})`);
         }
       } catch (error) {
         console.error('Portal access creation failed:', error);
